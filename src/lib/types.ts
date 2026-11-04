@@ -1,4 +1,5 @@
 export type Page =
+  | "home"
   | "disk"
   | "clean"
   | "dupes"
@@ -165,9 +166,42 @@ export type Config = {
   notifications: boolean
   autoUpdate: boolean
   updateUrl: string
+  startWithWindows: boolean
+  notifyDiskFull: boolean
+  notifyAppUpdates: boolean
+  notifyJunk: boolean
+  notifySmart: boolean
+  notifyTaskDone: boolean
+}
+
+export type Job = {
+  id: string
+  title: string
+  page: string
+  progress: number
+  detail: string
+  state: "running" | "done" | "error"
+}
+
+export type Suggestion = {
+  id: string
+  title: string
+  detail: string
+  page: string
+  tone: string
+}
+
+export type DiskSnap = {
+  root: string
+  total: number
+  files: number
+  errors: number
+  children: Entry[]
+  biggest: Entry[]
 }
 
 export const PAGES: Page[] = [
+  "home",
   "disk",
   "clean",
   "dupes",

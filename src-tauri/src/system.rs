@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use bob_core::{impact, privacy_toggles, DiskHealth, RegDesired};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
@@ -10,7 +10,7 @@ use crate::elevate::{self, elevate_sync, undo_to_op, RegOp, Task};
 use crate::hidden;
 use crate::state::{AppState, DisabledStartup, SavedPrivacy, UndoOp};
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartupItem {
     pub id: String,
@@ -822,8 +822,25 @@ fn json_array(text: &str) -> Vec<Value> {
 }
 
 pub fn notify(app: &AppHandle, body: &str) {
-    let enabled = app.state::<AppState>().lock().config.notifications;
-    if !enabled {
+    notify_kind(app, "task", body);
+}
+
+pub fn notify_kind(app: &AppHandle, kind: &str, body: &str) {
+    let state = app.state::<AppState>();
+    let config = state.lock().config.clone();
+    let allow = if !config.notifications {
+        false
+    } else {
+        match kind {
+            "disk" => config.notify_disk_full,
+            "updates" => config.notify_app_updates,
+            "junk" => config.notify_junk,
+            "smart" => config.notify_smart,
+            "task" => config.notify_task_done,
+            _ => true,
+        }
+    };
+    if !allow || body.trim().is_empty() {
         return;
     }
     use tauri_plugin_notification::NotificationExt;

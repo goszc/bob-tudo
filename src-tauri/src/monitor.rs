@@ -1,5 +1,8 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+
+static WATCH: AtomicBool = AtomicBool::new(false);
 
 use serde::Serialize;
 use sysinfo::{Pid, ProcessesToUpdate, System};
@@ -62,10 +65,14 @@ pub fn start() {
             disk_bps: 0.0,
         };
         loop {
+            if !WATCH.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(400));
+                continue;
+            }
             if let Some(sample) = sample_once(&mut keeper) {
                 *SAMPLE.lock().unwrap_or_else(|err| err.into_inner()) = Some(sample);
             }
-            std::thread::sleep(Duration::from_secs(1));
+            std::thread::sleep(Duration::from_secs(2));
         }
     });
 }
@@ -144,6 +151,11 @@ fn sample_once(keeper: &mut Keeper) -> Option<MonitorSample> {
         temp_c: keeper.temp_c,
         processes,
     })
+}
+
+#[tauri::command]
+pub fn monitor_watch(on: bool) {
+    WATCH.store(on, Ordering::Relaxed);
 }
 
 #[tauri::command]

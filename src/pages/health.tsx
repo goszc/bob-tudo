@@ -1,13 +1,19 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { PageHeader } from "../components/page-header"
 import { Button } from "../components/ui/button"
 import { errorText, invoke, isTauri } from "../lib/api"
 import { demoHealth } from "../lib/demo"
 import { bytes, hours, pct } from "../lib/format"
 import type { DiskHealth } from "../lib/types"
+import { useApp } from "../store"
 
 export function HealthPage() {
+  const cached = useApp().health
+  const updating = useApp().updating.includes("health")
   const [disks, setDisks] = useState<DiskHealth[]>(isTauri() ? [] : demoHealth)
+  useEffect(() => {
+    if (cached.length) setDisks((current) => (current.length ? current : cached))
+  }, [cached])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
@@ -30,6 +36,7 @@ export function HealthPage() {
   return (
     <div>
       <PageHeader title="saúde dos discos" sub="temperatura, desgaste e smart. se o windows não contar tudo, o smartctl entra quando estiver instalado." />
+      {updating && <p className="mb-3 text-[13px] text-muted">atualizando</p>}
       <div className="mb-5 flex gap-2">
         <Button onClick={() => void read(false)} disabled={busy}>
           ler discos

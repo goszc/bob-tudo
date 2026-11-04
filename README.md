@@ -32,7 +32,7 @@ a primeira mudança de sistema em cerca de dez minutos cria um ponto de restaura
 
 ## atualizar
 
-ao abrir, e de meia em meia hora, o programa olha
+ao abrir, o programa olha
 
 `https://github.com/goszc/bob-tudo/releases/latest/download/latest.json`
 

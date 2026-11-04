@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react"
 import { applyWindowTheme, invoke, isTauri, onBob } from "./lib/api"
-import { isPage, isTheme, type Config, type Page, type ThemeMode } from "./lib/types"
+import { demoBiggest, demoChildren, demoClean, demoHealth, demoRoot, demoStartup, demoUpgrades } from "./lib/demo"
+import { isPage, isTheme, type CleanCategory, type Config, type DiskHealth, type DiskSnap, type Job, type Page, type StartupItem, type Suggestion, type ThemeMode, type WingetRow } from "./lib/types"
 
 type Confirm = {
   title: string
@@ -17,6 +18,14 @@ type State = {
   confirm: Confirm | null
   updateOffer: string | null
   version: string
+  jobs: Job[]
+  suggestions: Suggestion[]
+  disk: DiskSnap | null
+  clean: CleanCategory[]
+  health: DiskHealth[]
+  startup: StartupItem[]
+  upgrades: WingetRow[]
+  updating: string[]
 }
 
 const params = new URLSearchParams(location.search)
@@ -24,9 +33,14 @@ const storedTheme = localStorage.getItem("bob-tudo-theme")
 const queryTheme = isTheme(params.get("theme")) ? params.get("theme") : null
 const initialTheme = (queryTheme || (isTheme(storedTheme) ? storedTheme : "system")) as ThemeMode
 const queryPage = params.get("page")
+const browser = typeof window !== "undefined" && !isTauri()
+
+const browserDisk: DiskSnap | null = browser
+  ? { root: demoRoot.path, total: demoRoot.size, files: 12, errors: 0, children: demoChildren(demoRoot.path), biggest: demoBiggest(false) }
+  : null
 
 let state: State = {
-  page: isPage(queryPage) ? queryPage : "disk",
+  page: isPage(queryPage) ? queryPage : "home",
   config: {
     theme: initialTheme,
     themeGlass: localStorage.getItem("bob-tudo-glass") === "1" || initialTheme === "glass-light" || initialTheme === "glass-dark",
@@ -34,11 +48,34 @@ let state: State = {
     notifications: true,
     autoUpdate: true,
     updateUrl: "",
+    startWithWindows: true,
+    notifyDiskFull: true,
+    notifyAppUpdates: true,
+    notifyJunk: true,
+    notifySmart: true,
+    notifyTaskDone: true,
   },
   toast: null,
   confirm: null,
   updateOffer: null,
-  version: "0.1.0",
+  version: "0.2.0",
+  jobs: browser
+    ? [{ id: "mapa", title: "mapa do disco", page: "disk", progress: 0.62, detail: "c:\\users", state: "running" }]
+    : [],
+  suggestions: browser
+    ? [
+        { id: "disk-full", title: "disco quase cheio", detail: "resta cerca de 18 gb livres no volume principal", page: "disk", tone: "warn" },
+        { id: "junk", title: "lixo acumulado", detail: "6 gb em temporários e caches, se você quiser limpar", page: "clean", tone: "warn" },
+        { id: "upgrades", title: "atualizações de apps", detail: "2 aplicativo(s) com versão nova no winget", page: "upgrades", tone: "info" },
+        { id: "smart", title: "disco com problema", detail: "o seagate barracuda não está saudável", page: "health", tone: "warn" },
+      ]
+    : [],
+  disk: browserDisk,
+  clean: browser ? demoClean : [],
+  health: browser ? demoHealth : [],
+  startup: browser ? demoStartup : [],
+  upgrades: browser ? demoUpgrades : [],
+  updating: browser ? ["disk"] : [],
 }
 
 const listeners = new Set<() => void>()
@@ -123,17 +160,49 @@ export function initApp() {
     if (getState().config.theme === "system") applyTheme("system")
   })
   if (!isTauri()) return
-  void invoke<{ config: Config; version: string; updateReady: boolean }>("state").then((snapshot) => {
+  void invoke<{
+    config: Config
+    version: string
+    updateReady: boolean
+    jobs: Job[]
+    disk: DiskSnap | null
+    clean: CleanCategory[]
+    health: DiskHealth[]
+    startup: StartupItem[]
+    upgrades: WingetRow[]
+    suggestions: Suggestion[]
+    updating: string[]
+  }>("state").then((snapshot) => {
     patch({
-      config: snapshot.config,
+      config: { ...state.config, ...snapshot.config },
       version: snapshot.version,
       updateOffer: snapshot.updateReady ? snapshot.version : state.updateOffer,
+      jobs: snapshot.jobs ?? [],
+      disk: snapshot.disk,
+      clean: snapshot.clean ?? [],
+      health: snapshot.health ?? [],
+      startup: snapshot.startup ?? [],
+      upgrades: snapshot.upgrades ?? [],
+      suggestions: snapshot.suggestions ?? [],
+      updating: snapshot.updating ?? [],
     })
     applyTheme(snapshot.config.theme, snapshot.config.themeGlass)
   })
   void onBob((event) => {
     if (event.type === "toast") toast(event.message)
     if (event.type === "update") patch({ updateOffer: event.version })
+    if (event.type === "jobs") patch({ jobs: event.jobs })
+    if (event.type === "navigate" && isPage(event.page)) go(event.page)
+    if (event.type === "disk") patch({ disk: event.snapshot })
+    if (event.type === "clean") patch({ clean: event.items })
+    if (event.type === "health") patch({ health: event.disks })
+    if (event.type === "startup") patch({ startup: event.items })
+    if (event.type === "upgrades") patch({ upgrades: event.rows })
+    if (event.type === "suggestions") patch({ suggestions: event.items })
+    if (event.type === "updating") {
+      const updating = event.on ? Array.from(new Set([...state.updating, event.area])) : state.updating.filter((area) => area !== event.area)
+      patch({ updating })
+    }
   })
 }
 

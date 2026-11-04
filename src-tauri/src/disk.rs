@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
-use bob_core::{children_of, biggest, search, Entry};
+use bob_core::{biggest, children_of, relax_thread, scan_path_cached, search, Entry};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -58,18 +58,34 @@ pub fn list_roots() -> Vec<String> {
 
 #[tauri::command]
 pub async fn start_scan(app: AppHandle, path: String) -> Result<ScanSummary, String> {
+    run_disk(app, path, false).await
+}
+
+pub async fn run_disk(app: AppHandle, path: String, quiet: bool) -> Result<ScanSummary, String> {
     if app.state::<AppState>().scanning.swap(true, Ordering::SeqCst) {
         return Err("já existe uma varredura".into());
     }
+    let id = crate::jobs::begin(&app, "mapa do disco", "disk", quiet);
+    crate::jobs::mark_updating(&app, "disk", true);
     let cancel = {
         let flag = app.state::<AppState>().lock().scan_cancel.clone();
         flag.store(false, Ordering::SeqCst);
         flag
     };
     let progress = app.clone();
+    let job_id = id.clone();
+    let tree_path = app.state::<AppState>().lock().data_dir.join("disk-tree.json");
     let scanned = path.clone();
     let result = tokio::task::spawn_blocking(move || {
-        bob_core::scan_path(Path::new(&scanned), &cancel, |step| {
+        relax_thread();
+        let cache = crate::preload::load_tree(&tree_path);
+        let index = scan_path_cached(Path::new(&scanned), &cancel, |step| {
+            crate::jobs::tick(
+                &progress,
+                &job_id,
+                -1.0,
+                &format!("{} arquivos", step.files),
+            );
             let _ = progress.emit(
                 "bob",
                 BobEvent::ScanProgress {
@@ -78,19 +94,36 @@ pub async fn start_scan(app: AppHandle, path: String) -> Result<ScanSummary, Str
                     path: step.current,
                 },
             );
-        })
+        }, cache.as_ref())?;
+        crate::preload::store_tree(&tree_path, &index);
+        Ok::<_, String>(index)
     })
     .await
     .map_err(|err| err.to_string());
     app.state::<AppState>().scanning.store(false, Ordering::SeqCst);
-    let index = result??;
+    let index = match result {
+        Ok(Ok(index)) => index,
+        Ok(Err(err)) => {
+            crate::jobs::mark_updating(&app, "disk", false);
+            crate::jobs::finish(&app, &id, false, &err);
+            return Err(err);
+        }
+        Err(err) => {
+            crate::jobs::mark_updating(&app, "disk", false);
+            crate::jobs::finish(&app, &id, false, &err);
+            return Err(err);
+        }
+    };
     let summary = ScanSummary {
         root: index.root.clone(),
         total: index.total,
         files: index.files,
         errors: index.errors,
     };
-    app.state::<AppState>().lock().scan = Some(index);
+    crate::preload::store_snapshot(&app, &index);
+    crate::jobs::mark_updating(&app, "disk", false);
+    crate::jobs::finish(&app, &id, true, format!("{} arquivos", summary.files));
+    crate::preload::refresh_suggestions(&app);
     Ok(summary)
 }
 

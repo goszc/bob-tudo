@@ -1,11 +1,12 @@
 import type { ReactNode } from "react"
 import { cn } from "../lib/cn"
-import type { Page } from "../lib/types"
+import { isPage, type Page } from "../lib/types"
 import { applyUpdate, closeConfirm, go, useApp } from "../store"
 import { Logo } from "./logo"
 import { ConfirmDialog } from "./ui/dialog"
 
 const GROUPS: { label: string; items: { id: Page; label: string }[] }[] = [
+  { label: "agora", items: [{ id: "home", label: "sugestões" }] },
   {
     label: "disco",
     items: [
@@ -68,6 +69,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </div>
           ))}
         </nav>
+        <TaskList />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-2 border-b border-line px-4 py-3 md:hidden">
@@ -89,11 +91,8 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
           ))}
         </nav>
-        <main className="flex-1 overflow-auto">
-          <div key={app.page} className="animate-rise mx-auto w-full max-w-[1080px] px-5 py-8 md:px-10">
-            {children}
-          </div>
-        </main>
+        <TaskStrip />
+        <main className="relative flex-1 overflow-hidden">{children}</main>
       </div>
       {app.updateOffer ? (
         <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full bg-fill px-4 py-2 text-[13px] text-onfill">
@@ -120,6 +119,43 @@ export function Shell({ children }: { children: ReactNode }) {
           run?.()
         }}
       />
+    </div>
+  )
+}
+
+function TaskList() {
+  const jobs = useApp().jobs.filter((job) => job.state === "running")
+  if (!jobs.length) return null
+  return (
+    <div className="mt-4 border-t border-line pt-3">
+      <div className="px-3 pb-1 text-[11px] text-muted">em andamento</div>
+      <div className="flex flex-col gap-1">
+        {jobs.map((job) => (
+          <button key={job.id} type="button" onClick={() => isPage(job.page) && go(job.page)} className="rounded-[10px] px-3 py-2 text-left hover:bg-soft">
+            <div className="flex items-center justify-between gap-2 text-[13px]">
+              <span className="truncate">{job.title}</span>
+              <span className="text-[11px] text-muted">{job.progress < 0 ? "…" : `${Math.round(job.progress * 100)}%`}</span>
+            </div>
+            <div className="mt-1 h-[3px] overflow-hidden rounded-full bg-soft">
+              <div className="h-full rounded-full bg-ink" style={{ width: job.progress < 0 ? "40%" : `${Math.max(8, Math.min(100, job.progress * 100))}%` }} />
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TaskStrip() {
+  const jobs = useApp().jobs.filter((job) => job.state === "running")
+  if (!jobs.length) return null
+  return (
+    <div className="flex gap-2 overflow-x-auto border-b border-line px-4 py-2 md:hidden">
+      {jobs.map((job) => (
+        <button key={job.id} type="button" onClick={() => isPage(job.page) && go(job.page)} className="shrink-0 rounded-full bg-soft px-3 py-1 text-[12px]">
+          {job.title} {job.progress < 0 ? "" : `${Math.round(job.progress * 100)}%`}
+        </button>
+      ))}
     </div>
   )
 }

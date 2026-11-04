@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use bob_core::{oss_catalog, parse_winget_table, protected_path, OssApp, WingetRow};
+use bob_core::{oss_catalog, parse_winget_export, parse_winget_table, protected_path, OssApp, WingetRow};
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::elevate::{elevate_sync, Task};
@@ -35,15 +35,25 @@ pub struct Leftover {
 }
 
 #[tauri::command]
-pub async fn winget_search(query: String) -> Result<Vec<WingetRow>, String> {
+pub async fn winget_search(app: AppHandle, query: String) -> Result<Vec<WingetRow>, String> {
     let query = query.trim();
     if query.is_empty() {
         return Err("digite um nome".into());
     }
+    let key = query.to_lowercase();
+    if let Some(hit) = app.state::<crate::state::AppState>().lock().search_cache.get(&key).cloned() {
+        return Ok(hit);
+    }
     let text = winget_text(&["search", "--query", query, "--accept-source-agreements", "--disable-interactivity"]).await?;
-    let rows = parse_winget_table(&text);
-    if rows.is_empty() && !text.to_lowercase().contains("name") && !text.to_lowercase().contains("nome") {
+    let rows = parse_or_empty(&text);
+    if rows.is_empty() && !text.to_lowercase().contains("name") && !text.to_lowercase().contains("nome") && !text.trim_start().starts_with('{') {
         return Err(text.lines().next().unwrap_or("o winget não devolveu resultados").into());
+    }
+    {
+        let state = app.state::<crate::state::AppState>();
+        let mut shared = state.lock();
+        shared.search_cache.insert(key, rows.clone());
+        crate::state::write_json(&shared.data_dir.join("winget-search.json"), &shared.search_cache);
     }
     Ok(rows)
 }
@@ -53,6 +63,7 @@ pub async fn winget_install(app: AppHandle, ids: Vec<String>) -> Result<(), Stri
     if ids.is_empty() {
         return Err("nada selecionado".into());
     }
+    let job = crate::jobs::begin(&app, "instalação", "install", false);
     tokio::spawn(async move {
         for id in ids {
             let _ = app.emit(
@@ -78,6 +89,7 @@ pub async fn winget_install(app: AppHandle, ids: Vec<String>) -> Result<(), Stri
             }
         }
         crate::system::notify(&app, "instalação concluída");
+        crate::jobs::finish(&app, &job, true, "concluída");
         let _ = app.emit(
             "bob",
             BobEvent::Toast {
@@ -89,7 +101,23 @@ pub async fn winget_install(app: AppHandle, ids: Vec<String>) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub async fn winget_upgrades() -> Result<Vec<WingetRow>, String> {
+pub async fn winget_upgrades(app: AppHandle) -> Result<Vec<WingetRow>, String> {
+    let fresh = app.state::<crate::state::AppState>().lock().upgrades_fresh;
+    if fresh {
+        return Ok(app.state::<crate::state::AppState>().lock().upgrades.clone());
+    }
+    let cached = app.state::<crate::state::AppState>().lock().upgrades.clone();
+    let app2 = app.clone();
+    tokio::spawn(async move {
+        let _ = refresh_upgrades(&app2).await;
+    });
+    Ok(cached)
+}
+
+pub async fn refresh_upgrades(app: &AppHandle) -> Result<Vec<WingetRow>, String> {
+    if app.state::<crate::state::AppState>().lock().upgrades_fresh {
+        return Ok(app.state::<crate::state::AppState>().lock().upgrades.clone());
+    }
     let text = winget_text(&[
         "upgrade",
         "--include-unknown",
@@ -97,7 +125,27 @@ pub async fn winget_upgrades() -> Result<Vec<WingetRow>, String> {
         "--disable-interactivity",
     ])
     .await?;
-    Ok(parse_winget_table(&text))
+    let rows = parse_or_empty(&text);
+    {
+        let state = app.state::<crate::state::AppState>();
+        let mut shared = state.lock();
+        crate::state::write_json(&shared.data_dir.join("upgrades.json"), &rows);
+        shared.upgrades = rows.clone();
+        shared.upgrades_fresh = true;
+    }
+    let _ = app.emit("bob", crate::state::BobEvent::Upgrades { rows: rows.clone() });
+    Ok(rows)
+}
+
+fn parse_or_empty(text: &str) -> Vec<WingetRow> {
+    let trimmed = text.trim();
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        let parsed = parse_winget_export(trimmed);
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
+    parse_winget_table(text)
 }
 
 #[tauri::command]
@@ -126,6 +174,7 @@ pub async fn winget_upgrade(app: AppHandle, ids: Vec<String>, all: bool) -> Resu
     } else if ids.is_empty() {
         return Err("nada selecionado".into());
     } else {
+        let job = crate::jobs::begin(&app, "atualização", "upgrades", false);
         tokio::spawn(async move {
             for id in ids {
                 let args = vec![
@@ -141,13 +190,16 @@ pub async fn winget_upgrade(app: AppHandle, ids: Vec<String>, all: bool) -> Resu
                 let _ = stream(&app, "winget", &args).await;
             }
             crate::system::notify(&app, "atualizações concluídas");
+            crate::jobs::finish(&app, &job, true, "concluída");
         });
         return Ok(());
     };
     let app2 = app.clone();
+    let job = crate::jobs::begin(&app, "atualização", "upgrades", false);
     tokio::spawn(async move {
         let _ = stream(&app2, "winget", &args).await;
         crate::system::notify(&app2, "atualizações concluídas");
+        crate::jobs::finish(&app2, &job, true, "concluída");
         let _ = app2.emit(
             "bob",
             BobEvent::Toast {
@@ -207,8 +259,32 @@ pub async fn oss_search(query: String) -> Result<Vec<OssApp>, String> {
 #[tauri::command]
 pub async fn apps_list() -> Result<Vec<InstalledApp>, String> {
     let mut apps = uninstall_keys();
-    if let Ok(text) = winget_text(&["list", "--accept-source-agreements", "--disable-interactivity"]).await {
-        for row in parse_winget_table(&text) {
+    let exported = async {
+        let dir = std::env::temp_dir().join(format!("bob-tudo-winget-{}.json", std::process::id()));
+        let path = dir.display().to_string();
+        let text = winget_text(&[
+            "export",
+            "-o",
+            &path,
+            "--accept-source-agreements",
+            "--disable-interactivity",
+        ])
+        .await;
+        let file = std::fs::read_to_string(&dir).unwrap_or_default();
+        let _ = std::fs::remove_file(&dir);
+        if file.trim().starts_with('{') {
+            Ok(file)
+        } else {
+            text
+        }
+    };
+    let listed = if let Ok(text) = exported.await {
+        Some(text)
+    } else {
+        winget_text(&["list", "--accept-source-agreements", "--disable-interactivity"]).await.ok()
+    };
+    if let Some(text) = listed {
+        for row in parse_or_empty(&text) {
             if let Some(app) = apps.iter_mut().find(|app| app.name.eq_ignore_ascii_case(&row.name) || (!row.id.is_empty() && app.winget_id == row.id)) {
                 if app.winget_id.is_empty() {
                     app.winget_id = row.id;
@@ -240,6 +316,19 @@ pub async fn apps_list() -> Result<Vec<InstalledApp>, String> {
 pub async fn apps_uninstall(app: AppHandle, id: String) -> Result<(), String> {
     let apps = apps_list().await?;
     let app_info = apps.into_iter().find(|item| item.id == id).ok_or("aplicativo não encontrado")?;
+    let job = crate::jobs::begin(&app, "desinstalação", "uninstall", false);
+    let outcome = uninstall_one(&app, &app_info).await;
+    match &outcome {
+        Ok(()) => {
+            crate::system::notify(&app, "desinstalação concluída");
+            crate::jobs::finish(&app, &job, true, "concluída");
+        }
+        Err(err) => crate::jobs::finish(&app, &job, false, err.clone()),
+    }
+    outcome
+}
+
+async fn uninstall_one(app: &AppHandle, app_info: &InstalledApp) -> Result<(), String> {
     if !app_info.winget_id.is_empty() {
         let args = vec![
             "uninstall".into(),

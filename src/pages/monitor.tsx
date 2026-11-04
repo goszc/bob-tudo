@@ -6,13 +6,14 @@ import { bytes, pct, rate } from "../lib/format"
 import type { MonitorSample } from "../lib/types"
 import { ask, toast } from "../store"
 
-export function MonitorPage() {
+export function MonitorPage({ active = true }: { active?: boolean }) {
   const [sample, setSample] = useState<MonitorSample | null>(isTauri() ? null : demoMonitor)
   const [error, setError] = useState("")
 
   useEffect(() => {
-    if (!isTauri()) return
+    if (!isTauri() || !active) return
     let alive = true
+    void invoke("monitor_watch", { on: true })
     const tick = async () => {
       try {
         const next = await invoke<MonitorSample>("monitor_sample")
@@ -26,8 +27,9 @@ export function MonitorPage() {
     return () => {
       alive = false
       window.clearInterval(timer)
+      void invoke("monitor_watch", { on: false })
     }
-  }, [])
+  }, [active])
 
   function kill(pid: number, name: string) {
     ask("encerrar processo", `${name} (${pid}) fecha agora.`, "encerrar", () => {

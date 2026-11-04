@@ -15,6 +15,15 @@ export type BobEvent =
   | { type: "jobLog"; line: string }
   | { type: "toast"; message: string }
   | { type: "update"; version: string }
+  | { type: "jobs"; jobs: import("./types").Job[] }
+  | { type: "navigate"; page: string }
+  | { type: "disk"; snapshot: import("./types").DiskSnap }
+  | { type: "clean"; items: import("./types").CleanCategory[] }
+  | { type: "health"; disks: import("./types").DiskHealth[] }
+  | { type: "startup"; items: import("./types").StartupItem[] }
+  | { type: "upgrades"; rows: import("./types").WingetRow[] }
+  | { type: "suggestions"; items: import("./types").Suggestion[] }
+  | { type: "updating"; area: string; on: boolean }
 
 export async function onBob(handler: (event: BobEvent) => void): Promise<() => void> {
   if (!isTauri()) return () => {}

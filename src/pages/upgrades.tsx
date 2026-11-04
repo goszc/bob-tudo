@@ -1,13 +1,18 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { PageHeader } from "../components/page-header"
 import { Button } from "../components/ui/button"
 import { errorText, invoke, isTauri, onBob } from "../lib/api"
 import { demoUpgrades } from "../lib/demo"
 import type { WingetRow } from "../lib/types"
-import { toast } from "../store"
+import { toast, useApp } from "../store"
 
 export function UpgradesPage() {
+  const cached = useApp().upgrades
+  const updating = useApp().updating.includes("upgrades")
   const [rows, setRows] = useState<WingetRow[]>(isTauri() ? [] : demoUpgrades)
+  useEffect(() => {
+    if (cached.length) setRows((current) => (current.length ? current : cached))
+  }, [cached])
   const [busy, setBusy] = useState(false)
   const [log, setLog] = useState("")
   const [error, setError] = useState("")
@@ -56,6 +61,7 @@ export function UpgradesPage() {
         <Button variant="outline" disabled={!rows.length} onClick={() => void upgrade(rows.map((row) => row.id))}>
           atualizar tudo
         </Button>
+        {updating && <span className="self-center text-[13px] text-muted">atualizando</span>}
       </div>
       {error && <p className="mb-3 text-[13px] text-danger">{error}</p>}
       {!rows.length && !busy && <p className="text-[14px] text-muted">nada listado. se estiver tudo em dia, a lista fica vazia.</p>}

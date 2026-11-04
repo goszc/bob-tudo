@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { PageHeader } from "../components/page-header"
 import { Button } from "../components/ui/button"
 import { Checkbox } from "../components/ui/checkbox"
@@ -6,10 +6,15 @@ import { errorText, invoke, isTauri } from "../lib/api"
 import { demoClean } from "../lib/demo"
 import { bytes } from "../lib/format"
 import type { CleanCategory } from "../lib/types"
-import { ask, toast } from "../store"
+import { ask, toast, useApp } from "../store"
 
 export function CleanPage() {
+  const cached = useApp().clean
+  const updating = useApp().updating.includes("clean")
   const [items, setItems] = useState<CleanCategory[]>(isTauri() ? [] : demoClean)
+  useEffect(() => {
+    if (cached.length) setItems((current) => (current.length ? current : cached))
+  }, [cached])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [log, setLog] = useState("")
@@ -79,7 +84,7 @@ export function CleanPage() {
         <Button variant="outline" onClick={run} disabled={busy || !items.length}>
           limpar {total ? bytes(total) : ""}
         </Button>
-        {busy && <span className="text-[13px] text-muted">trabalhando…</span>}
+        {(busy || updating) && <span className="text-[13px] text-muted">{busy ? "trabalhando…" : "atualizando"}</span>}
       </div>
       {error && <p className="mb-3 text-[13px] text-danger">{error}</p>}
       {!items.length && !busy && <p className="text-[14px] text-muted">ainda não há uma medição. aperte medir para ver o tamanho de cada categoria.</p>}

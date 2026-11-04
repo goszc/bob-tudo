@@ -12,7 +12,6 @@ use crate::state::{AppState, BobEvent};
 const PUBKEY: &str = include_str!("../../packaging/updater.pub");
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const UPDATE_ENDPOINT: &str = "https://github.com/goszc/bob-tudo/releases/latest/download/latest.json";
-const CHECK_EVERY: Duration = Duration::from_secs(3 * 60 * 60);
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -37,15 +36,6 @@ pub async fn startup(app: &AppHandle) {
     if auto {
         let _ = check_app(app, false).await;
     }
-}
-
-pub async fn periodic(app: &AppHandle) {
-    let state = app.state::<AppState>();
-    let due = state.lock().config.auto_update;
-    if due {
-        let _ = check_app(app, false).await;
-    }
-    let _ = CHECK_EVERY;
 }
 
 #[tauri::command]

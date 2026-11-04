@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 
 use bob_core::{measure_paths, purge_paths, PurgeReport};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use tauri::Manager;
 
 use crate::elevate::{elevate_sync, Task};
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CleanCategory {
     pub id: String,
@@ -64,6 +64,8 @@ pub async fn clean_run(app: tauri::AppHandle, ids: Vec<String>) -> Result<Vec<Cl
     if ids.is_empty() {
         return Err("nada selecionado".into());
     }
+    let job = crate::jobs::begin(&app, "limpeza", "clean", false);
+    let mut job_guard = JobGuard { app: app.clone(), id: job, done: false };
     let mut done = Vec::new();
     for spec in specs() {
         if !ids.iter().any(|id| id == &spec.id) {
@@ -146,7 +148,23 @@ pub async fn clean_run(app: tauri::AppHandle, ids: Vec<String>) -> Result<Vec<Cl
             skipped: result.skipped,
         });
     }
+    job_guard.done = true;
+    crate::jobs::finish(&app, &job_guard.id, true, "concluída");
     Ok(done)
+}
+
+struct JobGuard {
+    app: tauri::AppHandle,
+    id: String,
+    done: bool,
+}
+
+impl Drop for JobGuard {
+    fn drop(&mut self) {
+        if !self.done {
+            crate::jobs::finish(&self.app, &self.id, false, "não concluída");
+        }
+    }
 }
 
 #[derive(Serialize)]

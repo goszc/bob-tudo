@@ -1,6 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WingetRow {
     pub name: String,
@@ -65,6 +66,33 @@ pub fn parse_winget_table(text: &str) -> Vec<WingetRow> {
         }
         if !row.name.is_empty() {
             rows.push(row);
+        }
+    }
+    rows
+}
+
+pub fn parse_winget_export(text: &str) -> Vec<WingetRow> {
+    let Ok(value) = serde_json::from_str::<Value>(text) else {
+        return Vec::new();
+    };
+    let mut rows = Vec::new();
+    let sources = value.get("Sources").and_then(|item| item.as_array()).cloned().unwrap_or_default();
+    for source in sources {
+        let source_name = source.get("SourceDetails").and_then(|item| item.get("Name")).and_then(|item| item.as_str()).unwrap_or("winget");
+        let packages = source.get("Packages").and_then(|item| item.as_array()).cloned().unwrap_or_default();
+        for package in packages {
+            let id = package.get("PackageIdentifier").and_then(|item| item.as_str()).unwrap_or("").to_string();
+            let version = package.get("Version").and_then(|item| item.as_str()).unwrap_or("").to_string();
+            if id.is_empty() {
+                continue;
+            }
+            rows.push(WingetRow {
+                name: id.clone(),
+                id,
+                version,
+                available: String::new(),
+                source: source_name.to_string(),
+            });
         }
     }
     rows
@@ -143,5 +171,14 @@ Firefox               Mozilla.Firefox    134.0     135.0       winget\n\
         assert_eq!(rows[0].name, "Firefox");
         assert_eq!(rows[0].available, "135.0");
         assert_eq!(rows[0].source, "winget");
+    }
+
+    #[test]
+    fn parses_export_json() {
+        let text = r#"{ "Sources": [ { "SourceDetails": { "Name": "winget" }, "Packages": [ { "PackageIdentifier": "VideoLAN.VLC", "Version": "3.0.21" } ] } ] }"#;
+        let rows = parse_winget_export(text);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "VideoLAN.VLC");
+        assert_eq!(rows[0].version, "3.0.21");
     }
 }

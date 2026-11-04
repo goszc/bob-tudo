@@ -7,11 +7,14 @@ use std::time::UNIX_EPOCH;
 
 use jwalk::WalkDir;
 use rayon::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::kind::is_image_ext;
 use crate::nid;
 use crate::phash::{dhash, hamming};
+use crate::priority::relax_thread;
+use crate::scan::{FileStamp, ScanIndex};
+use crate::norm_path;
 
 const MIN_BYTES: u64 = 4096;
 const PREFIX: usize = 64 * 1024;
@@ -51,22 +54,66 @@ struct Meta {
     modified_ms: u64,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct HashStore {
+    pub prefix: HashMap<String, String>,
+    pub full: HashMap<String, String>,
+}
+
+pub fn hash_cache_key(path: &str, size: u64, modified_ms: u64) -> String {
+    format!("{path}\u{1}{size}\u{1}{modified_ms}")
+}
+
 pub fn find_duplicates(
     roots: &[PathBuf],
     images: bool,
     cancel: &AtomicBool,
+    progress: impl FnMut(DupeProgress),
+) -> Result<Vec<DupeGroup>, String> {
+    find_duplicates_with(roots, images, cancel, progress, None, &mut HashStore::default())
+}
+
+pub fn find_duplicates_with(
+    roots: &[PathBuf],
+    images: bool,
+    cancel: &AtomicBool,
     mut progress: impl FnMut(DupeProgress),
+    index: Option<&ScanIndex>,
+    hashes: &mut HashStore,
 ) -> Result<Vec<DupeGroup>, String> {
     if roots.is_empty() {
         return Err("escolha uma pasta".into());
     }
+    relax_thread();
     let mut by_size: HashMap<u64, Vec<Meta>> = HashMap::new();
     let mut seen = 0u64;
+    if let Some(stamps) = index.and_then(|index| stamps_covering(index, roots)) {
+        for stamp in stamps {
+            if stamp.size < MIN_BYTES {
+                continue;
+            }
+            by_size.entry(stamp.size).or_default().push(Meta {
+                path: PathBuf::from(&stamp.path),
+                size: stamp.size,
+                modified_ms: stamp.modified_ms,
+            });
+            seen += 1;
+        }
+        progress(DupeProgress {
+            phase: "índice do mapa".into(),
+            done: seen,
+            total: seen,
+        });
+    } else {
     for root in roots {
         if !root.exists() {
             return Err(format!("pasta não encontrada: {}", root.display()));
         }
-        for entry in WalkDir::new(root).skip_hidden(false).follow_links(false) {
+        for entry in WalkDir::new(root)
+            .skip_hidden(false)
+            .follow_links(false)
+            .parallelism(jwalk::Parallelism::RayonNewPool(2))
+        {
             if cancel.load(Ordering::Relaxed) {
                 return Err("busca cancelada".into());
             }
@@ -100,19 +147,20 @@ pub fn find_duplicates(
             }
         }
     }
+    }
     let mut groups: Vec<Vec<Meta>> = by_size.into_values().filter(|group| group.len() > 1).collect();
     progress(DupeProgress {
         phase: "comparando trechos".into(),
         done: 0,
         total: groups.len() as u64,
     });
-    groups = regroup(groups, cancel, true, &mut progress)?;
+    groups = regroup(groups, cancel, true, hashes, &mut progress)?;
     progress(DupeProgress {
         phase: "conferindo arquivos".into(),
         done: 0,
         total: groups.len() as u64,
     });
-    groups = regroup(groups, cancel, false, &mut progress)?;
+    groups = regroup(groups, cancel, false, hashes, &mut progress)?;
 
     let mut exact_paths = std::collections::HashSet::new();
     let mut out = Vec::new();
@@ -165,6 +213,7 @@ fn regroup(
     groups: Vec<Vec<Meta>>,
     cancel: &AtomicBool,
     prefix: bool,
+    hashes: &mut HashStore,
     progress: &mut impl FnMut(DupeProgress),
 ) -> Result<Vec<Vec<Meta>>, String> {
     let total = groups.len() as u64;
@@ -178,23 +227,48 @@ fn regroup(
         done: 0,
         total,
     });
-    let hashed: Vec<Vec<(String, Meta)>> = groups
-        .into_par_iter()
+    let known = std::sync::Arc::new(if prefix { hashes.prefix.clone() } else { hashes.full.clone() });
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .map_err(|err| err.to_string())?;
+    let hashed: Vec<Vec<(String, Meta, String)>> = pool.install(|| {
+        let known = known.clone();
+        groups
+            .into_par_iter()
+            .map(move |group| {
+                relax_thread();
+                if cancel.load(Ordering::Relaxed) {
+                    return Vec::new();
+                }
+                group
+                    .into_iter()
+                    .filter_map(|meta| {
+                        let key = hash_cache_key(&meta.path.display().to_string(), meta.size, meta.modified_ms);
+                        let hash = if let Some(hit) = known.get(&key) {
+                            hit.clone()
+                        } else if prefix && meta.size > PREFIX as u64 {
+                            hash_prefix(&meta.path, PREFIX)?
+                        } else {
+                            hash_file(&meta.path)?
+                        };
+                        Some((hash, meta, key))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    });
+    let slot = if prefix { &mut hashes.prefix } else { &mut hashes.full };
+    let hashed: Vec<Vec<(String, Meta)>> = hashed
+        .into_iter()
         .map(|group| {
-            if cancel.load(Ordering::Relaxed) {
-                return Vec::new();
-            }
             group
                 .into_iter()
-                .filter_map(|meta| {
-                    let hash = if prefix && meta.size > PREFIX as u64 {
-                        hash_prefix(&meta.path, PREFIX)
-                    } else {
-                        hash_file(&meta.path)
-                    }?;
-                    Some((hash, meta))
+                .map(|(hash, meta, key)| {
+                    slot.entry(key).or_insert_with(|| hash.clone());
+                    (hash, meta)
                 })
-                .collect::<Vec<_>>()
+                .collect()
         })
         .collect();
     progress(DupeProgress {
@@ -377,6 +451,34 @@ fn similar_images(
     Ok(groups)
 }
 
+fn stamps_covering(index: &ScanIndex, roots: &[PathBuf]) -> Option<Vec<FileStamp>> {
+    if index.file_stamps.is_empty() {
+        return None;
+    }
+    let roots: Vec<String> = roots.iter().map(|root| norm_path(root)).collect();
+    let covered = roots.iter().all(|root| root == &index.root || is_within(&index.root, root));
+    if !covered {
+        return None;
+    }
+    let stamps: Vec<FileStamp> = index
+        .file_stamps
+        .iter()
+        .filter(|stamp| roots.iter().any(|root| stamp.path == *root || is_within(root, &stamp.path)))
+        .cloned()
+        .collect();
+    if stamps.is_empty() { None } else { Some(stamps) }
+}
+
+fn is_within(root: &str, path: &str) -> bool {
+    let prefix = if root.ends_with('\\') || root.ends_with('/') {
+        root.to_string()
+    } else {
+        format!("{root}\\")
+    };
+    let prefix_unix = prefix.replace('\\', "/");
+    path.starts_with(&prefix) || path.starts_with(&prefix_unix)
+}
+
 fn find(parent: &mut [usize], mut i: usize) -> usize {
     while parent[i] != i {
         parent[i] = parent[parent[i]];
@@ -397,6 +499,14 @@ fn union(parent: &mut [usize], a: usize, b: usize) {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn cache_key_changes_with_mtime() {
+        assert_ne!(hash_cache_key("a", 10, 1), hash_cache_key("a", 10, 2));
+        let mut store = HashStore::default();
+        store.prefix.insert(hash_cache_key("a", 10, 1), "abc".into());
+        assert_eq!(store.prefix.get(&hash_cache_key("a", 10, 1)).map(String::as_str), Some("abc"));
+    }
 
     #[test]
     fn finds_identical_files() {

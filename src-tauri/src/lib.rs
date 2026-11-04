@@ -3,7 +3,9 @@ mod clean;
 mod disk;
 mod elevate;
 mod hidden;
+mod jobs;
 mod monitor;
+mod preload;
 mod state;
 mod system;
 mod updates;
@@ -20,6 +22,14 @@ struct Snapshot {
     config: Config,
     version: String,
     update_ready: bool,
+    jobs: Vec<state::JobView>,
+    disk: Option<bob_core::DiskSnapshot>,
+    clean: Vec<clean::CleanCategory>,
+    health: Vec<bob_core::DiskHealth>,
+    startup: Vec<system::StartupItem>,
+    upgrades: Vec<bob_core::WingetRow>,
+    suggestions: Vec<bob_core::Suggestion>,
+    updating: Vec<String>,
 }
 
 #[tauri::command]
@@ -30,6 +40,14 @@ fn state(app: tauri::AppHandle) -> Snapshot {
         config: shared.config.clone(),
         version: env!("CARGO_PKG_VERSION").into(),
         update_ready: shared.pending_installer.is_some(),
+        jobs: shared.jobs.clone(),
+        disk: shared.disk.clone(),
+        clean: shared.clean.clone(),
+        health: shared.health.clone(),
+        startup: shared.startup.clone(),
+        upgrades: shared.upgrades.clone(),
+        suggestions: shared.suggestions.clone(),
+        updating: shared.updating.clone(),
     }
 }
 
@@ -37,9 +55,34 @@ fn state(app: tauri::AppHandle) -> Snapshot {
 fn set_config(app: tauri::AppHandle, config: Config) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut shared = state.lock();
-    shared.config = config;
+    shared.config = config.clone();
     state::save_config(&shared);
+    drop(shared);
+    sync_autostart(config.start_with_windows);
     Ok(())
+}
+
+fn sync_autostart(enabled: bool) {
+    #[cfg(windows)]
+    {
+        use winreg::enums::*;
+        use winreg::RegKey;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let Ok((key, _)) = hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run") else {
+            return;
+        };
+        if enabled {
+            if let Ok(exe) = std::env::current_exe() {
+                let _ = key.set_value("bob tudo", &format!("\"{}\" --tray", exe.display()));
+            }
+        } else {
+            let _ = key.delete_value("bob tudo");
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = enabled;
+    }
 }
 
 #[tauri::command]
@@ -83,14 +126,20 @@ fn setup_tray(app: &tauri::AppHandle) {
         return;
     };
     let icon = tauri::include_image!("icons/32x32.png");
-    let _ = TrayIconBuilder::new()
+    let built = TrayIconBuilder::new()
         .icon(icon)
         .menu(&menu)
         .tooltip("bob tudo")
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => show_main(app),
-            "quit" => app.exit(0),
-            _ => {}
+        .on_menu_event(|app, event| {
+            let id = event.id.as_ref();
+            if id == "open" {
+                show_main(app);
+            } else if id == "quit" {
+                app.exit(0);
+            } else if let Some(page) = id.strip_prefix("go:") {
+                show_main(app);
+                let _ = app.emit("bob", BobEvent::Navigate { page: page.into() });
+            }
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -103,10 +152,15 @@ fn setup_tray(app: &tauri::AppHandle) {
             }
         })
         .build(app);
+    if let Ok(icon) = built {
+        jobs::store_tray(icon);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    bob_core::relax_process_keep_ui();
+    let tray_launch = std::env::args().any(|arg| arg == "--tray");
     tauri::Builder::default()
         .manage(AppState::new())
         .plugin(tauri_plugin_dialog::init())
@@ -124,17 +178,22 @@ pub fn run() {
                 }
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
+            sync_autostart(app.state::<AppState>().lock().config.start_with_windows);
+            if let Some(window) = app.get_webview_window("main") {
+                if tray_launch {
+                    let _ = window.hide();
+                } else {
+                    let _ = window.show();
+                }
+            }
             setup_tray(app.handle());
             monitor::start();
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 updates::startup(&handle).await;
-                loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(30 * 60)).await;
-                    updates::periodic(&handle).await;
-                }
             });
+            preload::spawn(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -160,6 +219,7 @@ pub fn run() {
             system::restore_create,
             system::restore_undo,
             system::restore_system,
+            monitor::monitor_watch,
             monitor::monitor_sample,
             monitor::kill_process,
             apps::winget_search,
@@ -192,8 +252,21 @@ async fn find_duplicates(app: tauri::AppHandle, paths: Vec<String>, images: bool
     };
     let progress = app.clone();
     let roots: Vec<std::path::PathBuf> = paths.into_iter().map(std::path::PathBuf::from).collect();
+    let job = jobs::begin(&app, "duplicados", "dupes", false);
+    let job_id = job.clone();
+    let hashes = app.state::<AppState>().lock().hash_store.clone();
+    let index = app.state::<AppState>().lock().scan.clone();
+    let data_dir = app.state::<AppState>().lock().data_dir.clone();
     let result = tokio::task::spawn_blocking(move || {
-        bob_core::find_duplicates(&roots, images, &cancel, |step| {
+        bob_core::relax_thread();
+        let mut hashes = hashes;
+        let found = bob_core::find_duplicates_with(&roots, images, &cancel, |step| {
+            let fraction = if step.total == 0 {
+                -1.0
+            } else {
+                step.done as f32 / step.total as f32
+            };
+            jobs::tick(&progress, &job_id, fraction, &step.phase);
             let _ = progress.emit(
                 "bob",
                 BobEvent::DupeProgress {
@@ -202,12 +275,30 @@ async fn find_duplicates(app: tauri::AppHandle, paths: Vec<String>, images: bool
                     total: step.total,
                 },
             );
-        })
+        }, index.as_ref(), &mut hashes)?;
+        if hashes.prefix.len() > 80_000 {
+            hashes.prefix.clear();
+            hashes.full.clear();
+        }
+        state::write_json(&data_dir.join("hash-cache.json"), &hashes);
+        Ok::<_, String>((found, hashes))
     })
     .await
     .map_err(|err| err.to_string());
     app.state::<AppState>().duping.store(false, Ordering::SeqCst);
-    let groups = result??;
+    let (groups, hashes) = match result {
+        Ok(Ok(pair)) => pair,
+        Ok(Err(err)) => {
+            jobs::finish(&app, &job, false, &err);
+            return Err(err);
+        }
+        Err(err) => {
+            jobs::finish(&app, &job, false, &err);
+            return Err(err);
+        }
+    };
+    app.state::<AppState>().lock().hash_store = hashes;
+    jobs::finish(&app, &job, true, format!("{} grupos", groups.len()));
     app.state::<AppState>().lock().dupes = groups.clone();
     Ok(groups)
 }

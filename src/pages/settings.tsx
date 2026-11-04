@@ -41,7 +41,7 @@ export function SettingsPage() {
 
   return (
     <div>
-      <PageHeader title="ajustes" sub="tema, bandeja e atualização. o bob tudo acompanha o windows e também deixa escolher." />
+      <PageHeader title="ajustes" sub="tema, bandeja, avisos e atualização. o bob tudo acompanha o windows e também deixa escolher." />
       <div className="mb-8 flex items-center gap-4">
         <Logo className="h-16 w-16" />
         <div>
@@ -69,11 +69,29 @@ export function SettingsPage() {
         <Row label="fechar para a bandeja" detail="o x esconde a janela. sair de verdade fica no ícone ao lado do relógio.">
           <Switch checked={config.minimizeToTray} label="fechar para a bandeja" onCheckedChange={(minimizeToTray) => setConfig({ minimizeToTray })} />
         </Row>
-        <Row label="avisos" detail="notifica disco em alerta e quando uma atualização fica pronta.">
+        <Row label="iniciar com o windows" detail="abre minimizado na bandeja quando você entra na conta.">
+          <Switch checked={config.startWithWindows} label="iniciar com o windows" onCheckedChange={(startWithWindows) => setConfig({ startWithWindows })} />
+        </Row>
+        <Row label="avisos" detail="liga ou desliga todos os avisos do windows.">
           <Switch checked={config.notifications} label="avisos" onCheckedChange={(notifications) => setConfig({ notifications })} />
         </Row>
-        <Row label="atualizar sozinho" detail="confere o github ao abrir e de meia em meia hora.">
-          <Switch checked={config.autoUpdate} label="atualizar sozinho" onCheckedChange={(autoUpdate) => setConfig({ autoUpdate })} />
+        <Row label="disco quase cheio" detail="avisa quando o volume principal passa de 90%.">
+          <Switch checked={config.notifyDiskFull} label="disco quase cheio" onCheckedChange={(notifyDiskFull) => setConfig({ notifyDiskFull })} />
+        </Row>
+        <Row label="atualizações de apps" detail="avisa quando o winget tem versão nova. não instala sozinho.">
+          <Switch checked={config.notifyAppUpdates} label="atualizações de apps" onCheckedChange={(notifyAppUpdates) => setConfig({ notifyAppUpdates })} />
+        </Row>
+        <Row label="lixo acumulado" detail="avisa acima de 500 mb em temporários e caches.">
+          <Switch checked={config.notifyJunk} label="lixo acumulado" onCheckedChange={(notifyJunk) => setConfig({ notifyJunk })} />
+        </Row>
+        <Row label="temperatura ou smart" detail="avisa disco quente ou com problema. não mexe no disco.">
+          <Switch checked={config.notifySmart} label="temperatura ou smart" onCheckedChange={(notifySmart) => setConfig({ notifySmart })} />
+        </Row>
+        <Row label="tarefa terminou" detail="avisa quando uma limpeza, varredura ou instalação que você pediu acaba.">
+          <Switch checked={config.notifyTaskDone} label="tarefa terminou" onCheckedChange={(notifyTaskDone) => setConfig({ notifyTaskDone })} />
+        </Row>
+        <Row label="atualizar o bob tudo" detail="confere o github ao abrir. não fica perguntando de meia em meia hora.">
+          <Switch checked={config.autoUpdate} label="atualizar o bob tudo" onCheckedChange={(autoUpdate) => setConfig({ autoUpdate })} />
         </Row>
       </div>
       <div className="mt-8 flex items-center gap-3">

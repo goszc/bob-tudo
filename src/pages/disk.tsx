@@ -7,11 +7,13 @@ import { demoBiggest, demoChildren, demoRoot } from "../lib/demo"
 import { bytes } from "../lib/format"
 import { kindColor, treemap } from "../lib/treemap"
 import type { Entry } from "../lib/types"
-import { ask, toast } from "../store"
+import { ask, toast, useApp } from "../store"
 
 type Progress = { files: number; bytes: number; path: string } | null
 
 export function DiskPage() {
+  const cached = useApp().disk
+  const updating = useApp().updating.includes("disk")
   const [roots, setRoots] = useState<string[]>(isTauri() ? [] : ["C:\\", "D:\\"])
   const [path, setPath] = useState(isTauri() ? "" : demoRoot.path)
   const [stack, setStack] = useState<string[]>([])
@@ -27,10 +29,14 @@ export function DiskPage() {
   useEffect(() => {
     if (!isTauri()) return
     void invoke<string[]>("list_roots").then(setRoots).catch((err) => setError(errorText(err)))
-    return () => {
-      void invoke("cancel_scan")
-    }
   }, [])
+
+  useEffect(() => {
+    if (!cached) return
+    setPath((current) => current || cached.root)
+    setEntries((current) => (current.length ? current : cached.children))
+    setBiggest((current) => (current.length ? current : cached.biggest))
+  }, [cached])
 
   useEffect(() => {
     if (!isTauri()) return
@@ -66,7 +72,9 @@ export function DiskPage() {
       setEntries(children)
       setBiggest(files)
     } catch (err) {
-      setError(errorText(err))
+      const message = errorText(err)
+      if (message.includes("já existe uma varredura")) setBusy(true)
+      else setError(message)
     } finally {
       setBusy(false)
       setProgress(null)
@@ -172,7 +180,12 @@ export function DiskPage() {
           </Button>
         )}
       </div>
-      {path && <p className="mb-3 truncate text-[13px] text-muted">{path}</p>}
+      {path && (
+        <p className="mb-3 truncate text-[13px] text-muted">
+          {path}
+          {updating ? " · atualizando" : ""}
+        </p>
+      )}
       {busy && (
         <p className="mb-3 text-[13px] text-muted">
           lendo {progress ? `${new Intl.NumberFormat("pt-BR").format(progress.files)} arquivos · ${bytes(progress.bytes)}` : "…"}

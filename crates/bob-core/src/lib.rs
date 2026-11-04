@@ -3,31 +3,41 @@
 
 mod catalog;
 mod clean;
+mod dupes;
+mod fastwalk;
 mod guard;
 mod health;
 mod impact;
 mod kind;
+mod ntfs;
 mod phash;
+mod priority;
 mod privacy;
 mod scan;
-mod dupes;
+mod suggest;
 mod version;
 mod winget;
 
 pub use catalog::{oss_catalog, OssApp};
 pub use clean::{measure_paths, purge_paths, PurgeReport};
-pub use dupes::{find_duplicates, DupeFile, DupeGroup, DupeProgress};
+pub use dupes::{find_duplicates, find_duplicates_with, DupeFile, DupeGroup, DupeProgress, HashStore};
 pub use guard::protected_path;
 pub use health::{assess, parse_smartctl, parse_storage_json, DiskHealth};
 pub use impact::impact;
 pub use kind::kind_of;
 pub use phash::{dhash, hamming};
 pub use privacy::{privacy_toggles, PrivacyToggle, RegDesired, RegEntry};
+pub use priority::{relax_process_keep_ui, relax_thread};
 pub use scan::{
-    biggest, children_of, forget, search, scan_path, Entry, ScanIndex, ScanProgress,
+    biggest, cache_from_index, children_of, forget, load_cache, save_cache, scan_path, scan_path_cached, search,
+    snapshot_of, DirTreeCache, DiskSnapshot, Entry, FileStamp, ScanIndex, ScanProgress,
+};
+pub use suggest::{
+    build_suggestions, disk_almost_full, junk_worth_mentioning, temp_or_smart, Signals, Suggestion, DISK_FULL_RATIO,
+    HOT_TEMP_C, JUNK_THRESHOLD,
 };
 pub use version::newer;
-pub use winget::{parse_winget_table, WingetRow};
+pub use winget::{parse_winget_export, parse_winget_table, WingetRow};
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
