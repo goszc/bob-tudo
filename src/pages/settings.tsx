@@ -66,6 +66,17 @@ export function SettingsPage() {
           </button>
         ))}
       </div>
+      <section id="agenda" className="mb-8 max-w-xl">
+        <h2 className="mb-3 text-[13px] text-muted">agenda</h2>
+        <div className="flex flex-col gap-3">
+          <Row label="avisos agendados" detail="opcional. ao abrir, avisa se a limpeza ou a saúde do disco passou do prazo. não acorda o pc e não age sozinho.">
+            <Switch checked={config.scheduleEnabled} label="avisos agendados" onCheckedChange={(scheduleEnabled) => setConfig({ scheduleEnabled })} />
+          </Row>
+          <Row label="token do github" detail="alternativa ao login. fica no cofre do windows e nunca volta para esta tela.">
+            <TokenField />
+          </Row>
+        </div>
+      </section>
       <Managers />
       <Github />
       <div className="flex max-w-xl flex-col gap-3">
@@ -261,6 +272,32 @@ function Github() {
         {note && <p className="mt-2 text-[12px] text-muted">{note}</p>}
       </div>
     </section>
+  )
+}
+
+function TokenField() {
+  const [token, setToken] = useState("")
+  const [note, setNote] = useState("")
+  return (
+    <form
+      className="flex items-center gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (!isTauri()) {
+          setNote("no app instalado")
+          setToken("")
+          return
+        }
+        void invoke("github_set_token", { token }).then(() => {
+          setToken("")
+          setNote(token.trim() ? "guardado" : "removido")
+        }).catch((err) => setNote(errorText(err)))
+      }}
+    >
+      <Input type="password" className="w-[180px]" placeholder="ghp_…" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" />
+      <Button size="sm" type="submit">guardar</Button>
+      {note && <span className="text-[12px] text-muted">{note}</span>}
+    </form>
   )
 }
 

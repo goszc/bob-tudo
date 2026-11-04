@@ -1,5 +1,6 @@
 mod apps;
 mod catalog;
+mod desk;
 mod clean;
 mod disk;
 mod elevate;
@@ -34,6 +35,7 @@ struct Snapshot {
     suggestions: Vec<bob_core::Suggestion>,
     updating: Vec<String>,
     managers: Vec<bob_core::ManagerInfo>,
+    disk_live: bool,
 }
 
 #[tauri::command]
@@ -53,6 +55,7 @@ fn state(app: tauri::AppHandle) -> Snapshot {
         suggestions: shared.suggestions.clone(),
         updating: shared.updating.clone(),
         managers: shared.managers.clone(),
+        disk_live: shared.disk_live,
     }
 }
 
@@ -110,6 +113,33 @@ fn set_window_material(window: tauri::WebviewWindow, dark: bool, glass: bool) {
     }
 }
 
+fn show_tray(app: &tauri::AppHandle, rect: &tauri::Rect, show: bool) {
+    let Some(window) = app.get_webview_window("tray") else {
+        return;
+    };
+    if !show {
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(450));
+            if let Some(window) = handle.get_webview_window("tray") {
+                if !window.is_focused().unwrap_or(false) {
+                    let _ = window.hide();
+                    crate::monitor::tray_hot(false);
+                }
+            }
+        });
+        return;
+    }
+    let (x, y, width) = match (rect.position, rect.size) {
+        (tauri::Position::Physical(pos), tauri::Size::Physical(size)) => (pos.x, pos.y, size.width as i32),
+        (tauri::Position::Logical(pos), tauri::Size::Logical(size)) => (pos.x as i32, pos.y as i32, size.width as i32),
+        _ => (120, 120, 32),
+    };
+    let _ = window.set_position(tauri::PhysicalPosition::new((x + width - 340).max(8), (y - 480).max(8)));
+    let _ = window.show();
+    crate::monitor::tray_hot(true);
+}
+
 fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -147,13 +177,13 @@ fn setup_tray(app: &tauri::AppHandle) {
             }
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                show_main(tray.app_handle());
+            match event {
+                TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, rect, .. } => {
+                    show_tray(tray.app_handle(), &rect, true);
+                }
+                TrayIconEvent::Enter { rect, .. } => show_tray(tray.app_handle(), &rect, true),
+                TrayIconEvent::Leave { .. } => show_tray(tray.app_handle(), &tauri::Rect { position: tauri::Position::Physical(tauri::PhysicalPosition { x: 0, y: 0 }), size: tauri::Size::Physical(tauri::PhysicalSize { width: 0, height: 0 }) }, false),
+                _ => {}
             }
         })
         .build(app);
@@ -254,7 +284,35 @@ pub fn run() {
             catalog::github_login_begin,
             catalog::github_login_poll,
             catalog::github_status,
-            catalog::github_logout
+            catalog::github_logout,
+            catalog::github_set_token,
+            desk::file_search,
+            desk::file_open,
+            desk::file_reveal,
+            desk::file_copy,
+            desk::bundle_preview,
+            desk::bundle_save,
+            desk::bundle_import,
+            desk::drivers_list,
+            desk::drivers_refresh,
+            desk::net_speed,
+            desk::net_ping,
+            desk::net_flush,
+            desk::dns_list,
+            desk::dns_apply,
+            desk::net_processes,
+            desk::game_state,
+            desk::game_enter,
+            desk::game_exit,
+            desk::power_list,
+            desk::power_set,
+            desk::battery_report,
+            desk::report_build,
+            desk::report_html,
+            desk::report_pdf,
+            desk::history_view,
+            desk::monitor_tray,
+            jobs::jobs_list
         ])
         .run(tauri::generate_context!())
         .expect("bob tudo");

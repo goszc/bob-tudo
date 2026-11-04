@@ -58,7 +58,7 @@ Section "bob tudo" SecApp
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\bob tudo" "UninstallString" "$\"$INSTDIR\Uninstall.exe$\""
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\bob tudo" "DisplayIcon" "$INSTDIR\bob-tudo.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\bob tudo" "Publisher" "goszc"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\bob tudo" "DisplayVersion" "0.3.0"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\bob tudo" "DisplayVersion" "0.4.0"
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\bob tudo" "NoModify" 1
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\bob tudo" "NoRepair" 1
   WriteRegStr HKCU "Software\bob tudo" "InstallDir" "$INSTDIR"

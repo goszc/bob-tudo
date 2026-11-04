@@ -35,15 +35,22 @@ pub fn spawn(app: AppHandle) {
         for task in tasks {
             let _ = task.await;
         }
+        crate::desk::consider_schedules(&app);
     });
 }
 
 async fn disk(app: AppHandle) {
+    if crate::desk::paused() {
+        return;
+    }
     let root = default_root();
     let _ = crate::disk::run_disk(app, root, true).await;
 }
 
 async fn clean(app: AppHandle) {
+    if crate::desk::paused() {
+        return;
+    }
     let id = jobs::begin(&app, "limpeza", "clean", true);
     jobs::mark_updating(&app, "clean", true);
     let items = tokio::task::spawn_blocking(crate::clean::clean_preview)
@@ -71,6 +78,9 @@ async fn clean(app: AppHandle) {
 }
 
 async fn upgrades(app: AppHandle) {
+    if crate::desk::paused() {
+        return;
+    }
     let id = jobs::begin(&app, "atualizações", "upgrades", true);
     jobs::mark_updating(&app, "upgrades", true);
     let rows = crate::apps::refresh_upgrades(&app).await.unwrap_or_default();
@@ -88,6 +98,9 @@ async fn upgrades(app: AppHandle) {
 }
 
 async fn health(app: AppHandle) {
+    if crate::desk::paused() {
+        return;
+    }
     let id = jobs::begin(&app, "saúde dos discos", "health", true);
     jobs::mark_updating(&app, "health", true);
     let disks = crate::system::disk_health(Some(false)).await.unwrap_or_default();
@@ -109,6 +122,9 @@ async fn health(app: AppHandle) {
 }
 
 async fn startup(app: AppHandle) {
+    if crate::desk::paused() {
+        return;
+    }
     let id = jobs::begin(&app, "inicialização", "startup", true);
     jobs::mark_updating(&app, "startup", true);
     let items = crate::system::startup_list(app.clone()).await.unwrap_or_default();

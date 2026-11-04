@@ -39,10 +39,26 @@ pub struct Config {
     pub github_client_id: String,
     #[serde(default = "yes")]
     pub notify_catalog_watch: bool,
+    #[serde(default)]
+    pub schedule_enabled: bool,
+    #[serde(default = "week")]
+    pub schedule_junk_days: u32,
+    #[serde(default = "fortnight")]
+    pub schedule_health_days: u32,
+    #[serde(default)]
+    pub game_apps: Vec<String>,
 }
 
 fn yes() -> bool {
     true
+}
+
+fn week() -> u32 {
+    7
+}
+
+fn fortnight() -> u32 {
+    14
 }
 
 impl Default for Config {
@@ -62,6 +78,10 @@ impl Default for Config {
             notify_task_done: true,
             github_client_id: String::new(),
             notify_catalog_watch: true,
+            schedule_enabled: false,
+            schedule_junk_days: 7,
+            schedule_health_days: 14,
+            game_apps: Vec::new(),
         }
     }
 }
@@ -160,6 +180,7 @@ pub struct Shared {
     pub hash_store: HashStore,
     pub notified: Vec<String>,
     pub managers: Vec<bob_core::ManagerInfo>,
+    pub disk_live: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -207,6 +228,8 @@ impl AppState {
             bob_core::CatalogIndex::memory().unwrap_or_else(|_| panic!("catálogo"))
         });
         let _ = catalog.ensure_curated();
+        let _ = bob_core::open_files(&data_dir.join("files.db"));
+        let _ = bob_core::open_history(&data_dir.join("history.db"));
         Self {
             shared: Mutex::new(Shared {
                 config,
@@ -234,6 +257,7 @@ impl AppState {
                 hash_store,
                 notified: Vec::new(),
                 managers,
+                disk_live: false,
             }),
             catalog: Mutex::new(catalog),
             scanning: AtomicBool::new(false),

@@ -14,6 +14,7 @@ type Progress = { files: number; bytes: number; path: string } | null
 export function DiskPage() {
   const cached = useApp().disk
   const updating = useApp().updating.includes("disk")
+  const live = useApp().diskLive
   const [roots, setRoots] = useState<string[]>(isTauri() ? [] : ["C:\\", "D:\\"])
   const [path, setPath] = useState(isTauri() ? "" : demoRoot.path)
   const [stack, setStack] = useState<string[]>([])
@@ -156,6 +157,7 @@ export function DiskPage() {
   return (
     <div>
       <PageHeader title="mapa do disco" sub="vê o que ocupa o disco. pastas grandes viram blocos. o que você excluir daqui vai para a lixeira." />
+      {live && <p className="mb-4 text-[13px] text-muted">mapa ao vivo · o diário do ntfs atualiza o desenho sem varrer o disco de novo</p>}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {roots.map((root) => (
           <Button key={root} variant={path === root ? "default" : "outline"} size="sm" onClick={() => void openPath(root, false)}>

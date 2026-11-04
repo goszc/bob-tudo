@@ -13,6 +13,14 @@ export type Page =
   | "oss"
   | "upgrades"
   | "uninstall"
+  | "search"
+  | "history"
+  | "backup"
+  | "drivers"
+  | "network"
+  | "game"
+  | "power"
+  | "report"
   | "settings"
 
 export type ThemeMode = "system" | "light" | "dark" | "glass-light" | "glass-dark"
@@ -175,6 +183,10 @@ export type Config = {
   notifyTaskDone: boolean
   githubClientId: string
   notifyCatalogWatch: boolean
+  scheduleEnabled: boolean
+  scheduleJunkDays: number
+  scheduleHealthDays: number
+  gameApps: string[]
 }
 
 export type Job = {
@@ -284,6 +296,14 @@ export const PAGES: Page[] = [
   "oss",
   "upgrades",
   "uninstall",
+  "search",
+  "history",
+  "backup",
+  "drivers",
+  "network",
+  "game",
+  "power",
+  "report",
   "settings",
 ]
 

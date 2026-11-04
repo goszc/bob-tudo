@@ -5,10 +5,13 @@ mod catalog;
 mod catalog_db;
 mod catalog_model;
 mod clean;
+mod desk;
 mod dupes;
 mod fastwalk;
+mod files;
 mod guard;
 mod health;
+mod history;
 mod impact;
 mod kind;
 mod ntfs;
@@ -29,7 +32,17 @@ pub use catalog_model::{
     CatalogDetail, CatalogHit, DevicePoll, DeviceStart, Incoming, ManagerInfo, Offer, Release, RemoteAsset, APP_INSTALLER_STORE,
 };
 pub use clean::{measure_paths, purge_paths, PurgeReport};
+pub use desk::{
+    bundle_from_json, bundle_to_json, dns_presets, driver_hint, mbps, parse_battery_html, parse_driver_table, parse_ping,
+    parse_power_plans, render_report_html, schedule_due, simple_pdf, BatteryReport, BundleApp, BundleCollection, DnsPreset,
+    DriverInfo, PcBundle, PcSummary, PowerPlan, HIGH_PERFORMANCE,
+};
 pub use dupes::{find_duplicates, find_duplicates_with, DupeFile, DupeGroup, DupeProgress, HashStore};
+pub use files::{
+    apply_events, catch_up, file_count, ingest_volume, mark_of, open_files, search_files, seed_volume, set_file_size, FileHit,
+    FileQuery, FileTouch, UsnReport,
+};
+pub use history::{bucket, grew, grew_folders, open_history, record_folders, record_sample, series, Grew, Point};
 pub use guard::protected_path;
 pub use health::{assess, parse_smartctl, parse_storage_json, DiskHealth};
 pub use impact::impact;
@@ -38,8 +51,8 @@ pub use phash::{dhash, hamming};
 pub use privacy::{privacy_toggles, PrivacyToggle, RegDesired, RegEntry};
 pub use priority::{relax_process_keep_ui, relax_thread};
 pub use scan::{
-    biggest, cache_from_index, children_of, forget, load_cache, save_cache, scan_path, scan_path_cached, search,
-    snapshot_of, DirTreeCache, DiskSnapshot, Entry, FileStamp, ScanIndex, ScanProgress,
+    biggest, cache_from_index, children_of, forget, index_from_cache, load_cache, note_file, save_cache, scan_path,
+    scan_path_cached, search, snapshot_of, DirTreeCache, DiskSnapshot, Entry, FileStamp, ScanIndex, ScanProgress,
 };
 pub use suggest::{
     build_suggestions, disk_almost_full, junk_worth_mentioning, temp_or_smart, Signals, Suggestion, DISK_FULL_RATIO,

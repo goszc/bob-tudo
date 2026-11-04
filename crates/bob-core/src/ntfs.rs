@@ -268,9 +268,38 @@ pub fn decode_runs(data: &[u8]) -> Vec<(i64, u64)> {
     out
 }
 
-/// Aplica um buffer de USN_RECORD_V2 (depois dos 8 bytes do próximo USN)
-/// e devolve os FRNs de diretório pai que mudaram.
-pub fn dirty_parents(records: &[u8]) -> Vec<u64> {
+pub const REASON_DATA_OVERWRITE: u32 = 0x0000_0001;
+pub const REASON_DATA_EXTEND: u32 = 0x0000_0002;
+pub const REASON_DATA_TRUNCATION: u32 = 0x0000_0004;
+pub const REASON_FILE_CREATE: u32 = 0x0000_0100;
+pub const REASON_FILE_DELETE: u32 = 0x0000_0200;
+pub const REASON_RENAME_OLD: u32 = 0x0000_1000;
+pub const REASON_RENAME_NEW: u32 = 0x0000_2000;
+pub const REASON_CLOSE: u32 = 0x8000_0000;
+pub const ATTR_DIRECTORY: u32 = 0x10;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UsnEvent {
+    pub record: u64,
+    pub parent: u64,
+    pub usn: i64,
+    pub reason: u32,
+    pub attributes: u32,
+    pub time_ms: u64,
+    pub name: String,
+}
+
+/// O buffer do FSCTL_READ_USN_JOURNAL começa com o próximo USN (8 bytes)
+/// e segue com registros V2.
+pub fn parse_usn_payload(buf: &[u8]) -> (i64, Vec<UsnEvent>) {
+    if buf.len() < 8 {
+        return (0, Vec::new());
+    }
+    let next = i64::from_le_bytes(buf[0..8].try_into().unwrap_or([0; 8]));
+    (next, parse_usn_records(&buf[8..]))
+}
+
+pub fn parse_usn_records(records: &[u8]) -> Vec<UsnEvent> {
     let mut out = Vec::new();
     let mut offset = 0usize;
     while offset + 60 <= records.len() {
@@ -278,9 +307,24 @@ pub fn dirty_parents(records: &[u8]) -> Vec<u64> {
         if length < 60 || offset + length > records.len() {
             break;
         }
-        let parent = u64_at(records, offset + 16).unwrap_or(0) & 0x0000_ffff_ffff_ffff;
-        if parent > 0 {
-            out.push(parent);
+        let major = u16_at(records, offset + 4).unwrap_or(0);
+        if major <= 2 {
+            let name_len = u16_at(records, offset + 56).unwrap_or(0) as usize;
+            let name_off = u16_at(records, offset + 58).unwrap_or(60) as usize;
+            let name = if name_off + name_len <= length {
+                utf16_at(&records[offset + name_off..offset + name_off + name_len])
+            } else {
+                String::new()
+            };
+            out.push(UsnEvent {
+                record: u64_at(records, offset + 8).unwrap_or(0) & 0x0000_ffff_ffff_ffff,
+                parent: u64_at(records, offset + 16).unwrap_or(0) & 0x0000_ffff_ffff_ffff,
+                usn: i64::from_le_bytes(records.get(offset + 24..offset + 32).and_then(|b| b.try_into().ok()).unwrap_or([0; 8])),
+                reason: u32_at(records, offset + 40).unwrap_or(0),
+                attributes: u32_at(records, offset + 52).unwrap_or(0),
+                time_ms: filetime_ms(i64::from_le_bytes(records.get(offset + 32..offset + 40).and_then(|b| b.try_into().ok()).unwrap_or([0; 8]))),
+                name,
+            });
         }
         let step = length.saturating_add(7) & !7;
         if step == 0 {
@@ -288,6 +332,21 @@ pub fn dirty_parents(records: &[u8]) -> Vec<u64> {
         }
         offset += step;
     }
+    out
+}
+
+fn filetime_ms(raw: i64) -> u64 {
+    if raw <= 0 {
+        return 0;
+    }
+    let unix = raw / 10_000 - 116_444_736_00000;
+    if unix <= 0 { 0 } else { unix as u64 }
+}
+
+/// Aplica um buffer de USN_RECORD_V2 (depois dos 8 bytes do próximo USN)
+/// e devolve os FRNs de diretório pai que mudaram.
+pub fn dirty_parents(records: &[u8]) -> Vec<u64> {
+    let mut out: Vec<u64> = parse_usn_records(records).into_iter().map(|event| event.parent).filter(|parent| *parent > 0).collect();
     out.sort_unstable();
     out.dedup();
     out
@@ -476,6 +535,78 @@ fn query_usn(letter: char) -> Option<(u64, i64)> {
     Some((journal_id, next_usn))
 }
 
+#[cfg(windows)]
+pub fn read_usn_events(letter: char, journal_id: u64, start: i64) -> Option<(i64, Vec<UsnEvent>)> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::{CloseHandle, GENERIC_READ};
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
+    use windows_sys::Win32::System::IO::DeviceIoControl;
+    const FSCTL_READ_USN_JOURNAL: u32 = 0x0009_00bb;
+    let current = query_usn(letter)?;
+    if current.0 != journal_id {
+        return None;
+    }
+    let path = format!("\\\\.\\{letter}:");
+    let wide: Vec<u16> = std::ffi::OsStr::new(&path).encode_wide().chain(std::iter::once(0)).collect();
+    let handle = unsafe {
+        CreateFileW(
+            wide.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            0,
+            std::ptr::null_mut(),
+        )
+    };
+    if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+        return None;
+    }
+    let mut cursor = start;
+    let mut events = Vec::new();
+    let mut guard = 0;
+    while guard < 8 && cursor < current.1 {
+        let mut input = [0u8; 40];
+        input[0..8].copy_from_slice(&cursor.to_le_bytes());
+        input[8..12].copy_from_slice(&0xffff_ffffu32.to_le_bytes());
+        input[32..40].copy_from_slice(&journal_id.to_le_bytes());
+        let mut output = vec![0u8; 256 * 1024];
+        let mut returned = 0u32;
+        let ok = unsafe {
+            DeviceIoControl(
+                handle,
+                FSCTL_READ_USN_JOURNAL,
+                input.as_ptr() as *const _,
+                input.len() as u32,
+                output.as_mut_ptr() as *mut _,
+                output.len() as u32,
+                &mut returned,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 || returned < 8 {
+            unsafe { let _ = CloseHandle(handle); }
+            return None;
+        }
+        output.truncate(returned as usize);
+        let (next, batch) = parse_usn_payload(&output);
+        if next <= cursor && batch.is_empty() {
+            break;
+        }
+        events.extend(batch);
+        cursor = next;
+        guard += 1;
+        if events.len() > 200_000 {
+            unsafe { let _ = CloseHandle(handle); }
+            return None;
+        }
+    }
+    unsafe { let _ = CloseHandle(handle); }
+    Some((cursor.max(current.1.min(cursor)), events))
+}
+
 fn u16_at(buf: &[u8], offset: usize) -> Option<u16> {
     Some(u16::from_le_bytes(buf.get(offset..offset + 2)?.try_into().ok()?))
 }
@@ -524,6 +655,33 @@ mod tests {
         buf[16] = 5;
         let parents = dirty_parents(&buf);
         assert_eq!(parents, vec![5]);
+    }
+
+    #[test]
+    fn usn_payload_reads_name_reason_and_next() {
+        let mut rec = vec![0u8; 80];
+        rec[0..4].copy_from_slice(&80u32.to_le_bytes());
+        rec[4] = 2;
+        rec[8] = 20;
+        rec[16] = 10;
+        rec[24] = 100;
+        rec[40..44].copy_from_slice(&REASON_FILE_CREATE.to_le_bytes());
+        let name: Vec<u16> = "nota.txt".encode_utf16().collect();
+        rec[56..58].copy_from_slice(&((name.len() * 2) as u16).to_le_bytes());
+        rec[58..60].copy_from_slice(&60u16.to_le_bytes());
+        for (index, unit) in name.iter().enumerate() {
+            let pos = 60 + index * 2;
+            rec[pos..pos + 2].copy_from_slice(&unit.to_le_bytes());
+        }
+        let mut payload = 500i64.to_le_bytes().to_vec();
+        payload.extend(rec);
+        let (next, events) = parse_usn_payload(&payload);
+        assert_eq!(next, 500);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "nota.txt");
+        assert_eq!(events[0].record, 20);
+        assert_eq!(events[0].parent, 10);
+        assert_eq!(events[0].reason, REASON_FILE_CREATE);
     }
 
     fn sample_record() -> Vec<u8> {

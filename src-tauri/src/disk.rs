@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
-use bob_core::{biggest, children_of, relax_thread, scan_path_cached, search, Entry};
+use bob_core::{biggest, cache_from_index, catch_up, children_of, forget, index_from_cache, mark_of, note_file, relax_thread, scan_path_cached, search, seed_volume, set_file_size, Entry, FileHit};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -66,6 +66,12 @@ pub async fn run_disk(app: AppHandle, path: String, quiet: bool) -> Result<ScanS
         return Err("já existe uma varredura".into());
     }
     let id = crate::jobs::begin(&app, "mapa do disco", "disk", quiet);
+    if let Some(summary) = apply_usn(&app, &path) {
+        crate::jobs::mark_updating(&app, "disk", false);
+        crate::jobs::finish(&app, &id, true, "mapa ao vivo");
+        app.state::<AppState>().scanning.store(false, Ordering::SeqCst);
+        return Ok(summary);
+    }
     crate::jobs::mark_updating(&app, "disk", true);
     let cancel = {
         let flag = app.state::<AppState>().lock().scan_cancel.clone();
@@ -120,6 +126,8 @@ pub async fn run_disk(app: AppHandle, path: String, quiet: bool) -> Result<ScanS
         files: index.files,
         errors: index.errors,
     };
+    seed_names(&path, &index);
+    remember_folders(&index);
     crate::preload::store_snapshot(&app, &index);
     crate::jobs::mark_updating(&app, "disk", false);
     crate::jobs::finish(&app, &id, true, format!("{} arquivos", summary.files));
@@ -211,4 +219,80 @@ pub fn open_in_explorer(path: String) -> Result<(), String> {
             .map_err(|err| err.to_string())?;
     }
     Ok(())
+}
+
+fn apply_usn(app: &AppHandle, path: &str) -> Option<crate::disk::ScanSummary> {
+    let report = catch_up(path)?;
+    let tree_path = app.state::<AppState>().lock().data_dir.join("disk-tree.json");
+    let cache = crate::preload::load_tree(&tree_path)?;
+    if cache.root != path && !path.is_empty() {
+        return None;
+    }
+    let mut index = index_from_cache(&cache);
+    for touch in &report.touches {
+        if touch.alive {
+            let meta = std::fs::metadata(&touch.path).ok();
+            let size = meta.as_ref().map(|item| item.len()).unwrap_or(touch.size);
+            let modified = meta
+                .and_then(|item| item.modified().ok())
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|time| time.as_millis() as u64)
+                .unwrap_or(0);
+            set_file_size(path, &touch.path, size, modified);
+            if size > 0 {
+                note_file(&mut index, &touch.path, &touch.name, size, &touch.kind);
+            }
+        } else {
+            let _ = forget(&mut index, &touch.path);
+        }
+    }
+    crate::preload::store_tree(&tree_path, &index);
+    remember_folders(&index);
+    crate::preload::store_snapshot(app, &index);
+    app.state::<AppState>().lock().disk_live = true;
+    Some(ScanSummary {
+        root: index.root.clone(),
+        total: index.total,
+        files: index.files,
+        errors: index.errors,
+    })
+}
+
+fn seed_names(volume: &str, index: &bob_core::ScanIndex) {
+    if mark_of(volume).is_some_and(|(_, _, source)| source == "mft") {
+        return;
+    }
+    let cache = cache_from_index(index);
+    let mut hits = Vec::new();
+    for (path, dir) in &cache.dirs {
+        let name = std::path::Path::new(path).file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_else(|| path.clone());
+        hits.push(FileHit {
+            name,
+            path: path.clone(),
+            parent: String::new(),
+            size: dir.size,
+            modified_ms: dir.mtime_ms,
+            dir: true,
+            kind: "pasta".into(),
+        });
+        for item in dir.items.iter().filter(|item| !item.synthetic) {
+            hits.push(FileHit {
+                name: item.name.clone(),
+                path: item.path.clone(),
+                parent: path.clone(),
+                size: item.size,
+                modified_ms: 0,
+                dir: item.dir,
+                kind: item.kind.clone(),
+            });
+        }
+    }
+    let _ = seed_volume(volume, &hits);
+}
+
+fn remember_folders(index: &bob_core::ScanIndex) {
+    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let children = children_of(index, &index.root);
+    let folders: Vec<(String, u64)> = children.into_iter().filter(|entry| entry.dir).take(24).map(|entry| (entry.path, entry.size)).collect();
+    bob_core::record_folders(ts, &folders);
 }

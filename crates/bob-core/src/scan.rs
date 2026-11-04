@@ -142,8 +142,9 @@ pub fn scan_path_cached(
     let root_key = norm_path(root);
     #[cfg(windows)]
     if is_volume_root(&root_key) {
-        if let Some((nodes, _cursor)) = crate::ntfs::try_scan_volume(root) {
+        if let Some((nodes, cursor)) = crate::ntfs::try_scan_volume(root) {
             if !nodes.is_empty() {
+                crate::files::ingest_volume(&root_key, &nodes, cursor.journal_id, cursor.next_usn);
                 return Ok(index_from_nodes(&root_key, nodes));
             }
         }
@@ -537,6 +538,150 @@ pub fn cache_from_index(index: &ScanIndex) -> DirTreeCache {
                 )
             })
             .collect(),
+    }
+}
+
+pub fn index_from_cache(cache: &DirTreeCache) -> ScanIndex {
+    let mut dirs: HashMap<String, RawDir> = HashMap::new();
+    let mut heap: BinaryHeap<std::cmp::Reverse<HeapItem>> = BinaryHeap::new();
+    let mut file_stamps = Vec::new();
+    let mut total = 0u64;
+    let mut files = 0u64;
+    for (path, dir) in &cache.dirs {
+        if path == &cache.root {
+            total = dir.size;
+            files = dir.files;
+        }
+        for stamp in &dir.stamps {
+            consider_heap(&mut heap, stamp);
+        }
+        file_stamps.extend(dir.stamps.iter().cloned());
+        dirs.insert(
+            path.clone(),
+            RawDir {
+                size: dir.size,
+                files: dir.files,
+                subdirs: dir.subdirs.clone(),
+                items: dir.items.iter().filter(|item| !item.synthetic).cloned().collect(),
+                small_size: dir.small_size,
+                small_count: dir.small_count,
+                mtime_ms: dir.mtime_ms,
+                direct_size: dir.direct_size,
+                direct_files: dir.direct_files,
+                stamps: dir.stamps.clone(),
+                reused: false,
+            },
+        );
+    }
+    for dir in dirs.values_mut() {
+        if dir.small_count > 0 {
+            dir.items.push(Entry {
+                name: format!("arquivos pequenos ({})", dir.small_count),
+                path: String::new(),
+                size: dir.small_size,
+                kind: "outro".into(),
+                dir: false,
+                synthetic: true,
+            });
+        }
+        dir.items.sort_by(|a, b| b.size.cmp(&a.size));
+    }
+    let mut biggest_files: Vec<Entry> = heap
+        .into_iter()
+        .map(|item| Entry {
+            name: item.0.name,
+            path: item.0.path,
+            size: item.0.size,
+            kind: item.0.kind,
+            dir: false,
+            synthetic: false,
+        })
+        .collect();
+    biggest_files.sort_by(|a, b| b.size.cmp(&a.size));
+    ScanIndex {
+        root: cache.root.clone(),
+        total,
+        files,
+        errors: 0,
+        reused_dirs: 0,
+        dirs,
+        biggest_files,
+        file_stamps,
+    }
+}
+
+pub fn note_file(index: &mut ScanIndex, path: &str, name: &str, size: u64, kind: &str) {
+    if path.is_empty() {
+        return;
+    }
+    let _ = forget(index, path);
+    if size == 0 {
+        return;
+    }
+    let parent = parent_key(path).unwrap_or_else(|| index.root.clone());
+    ensure(&mut index.dirs, &parent);
+    if let Some(dir) = index.dirs.get_mut(&parent) {
+        dir.direct_size = dir.direct_size.saturating_add(size);
+        dir.direct_files = dir.direct_files.saturating_add(1);
+        if size >= 4096 {
+            dir.stamps.push(FileStamp {
+                path: path.to_string(),
+                size,
+                modified_ms: 0,
+            });
+        }
+        if size >= BIG_FILE {
+            dir.items.push(Entry {
+                name: name.to_string(),
+                path: path.to_string(),
+                size,
+                kind: kind.to_string(),
+                dir: false,
+                synthetic: false,
+            });
+            dir.items.sort_by(|a, b| b.size.cmp(&a.size));
+        } else {
+            dir.small_size = dir.small_size.saturating_add(size);
+            dir.small_count = dir.small_count.saturating_add(1);
+        }
+    }
+    add_size(&mut index.dirs, &parent, size, 1);
+    index.total = index.total.saturating_add(size);
+    index.files = index.files.saturating_add(1);
+    if size >= BIG_FILE {
+        index.biggest_files.push(Entry {
+            name: name.to_string(),
+            path: path.to_string(),
+            size,
+            kind: kind.to_string(),
+            dir: false,
+            synthetic: false,
+        });
+        index.biggest_files.sort_by(|a, b| b.size.cmp(&a.size));
+        index.biggest_files.truncate(TOP);
+    }
+    if size >= 4096 {
+        index.file_stamps.push(FileStamp {
+            path: path.to_string(),
+            size,
+            modified_ms: 0,
+        });
+    }
+}
+
+fn add_size(dirs: &mut HashMap<String, RawDir>, start: &str, size: u64, files: u64) {
+    let mut current = Some(start.to_string());
+    let mut guard = 0;
+    while let Some(key) = current {
+        if let Some(dir) = dirs.get_mut(&key) {
+            dir.size = dir.size.saturating_add(size);
+            dir.files = dir.files.saturating_add(files);
+        }
+        current = parent_key(&key);
+        guard += 1;
+        if guard > 80 {
+            break;
+        }
     }
 }
 

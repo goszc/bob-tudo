@@ -28,6 +28,7 @@ type State = {
   upgrades: WingetRow[]
   updating: string[]
   managers: ManagerInfo[]
+  diskLive: boolean
 }
 
 const params = new URLSearchParams(location.search)
@@ -58,11 +59,15 @@ let state: State = {
     notifyTaskDone: true,
     githubClientId: "",
     notifyCatalogWatch: true,
+    scheduleEnabled: false,
+    scheduleJunkDays: 7,
+    scheduleHealthDays: 14,
+    gameApps: ["discord", "spotify"],
   },
   toast: null,
   confirm: null,
   updateOffer: null,
-  version: "0.3.0",
+  version: "0.4.0",
   jobs: browser
     ? [{ id: "mapa", title: "mapa do disco", page: "disk", progress: 0.62, detail: "c:\\users", state: "running" }]
     : [],
@@ -81,6 +86,7 @@ let state: State = {
   upgrades: browser ? demoUpgrades : [],
   updating: browser ? ["disk"] : [],
   managers: browser ? demoManagers : [],
+  diskLive: browser,
 }
 
 const listeners = new Set<() => void>()
@@ -183,6 +189,7 @@ export function initApp() {
     suggestions: Suggestion[]
     updating: string[]
     managers: ManagerInfo[]
+    diskLive: boolean
   }>("state").then((snapshot) => {
     patch({
       config: { ...state.config, ...snapshot.config },
@@ -197,6 +204,7 @@ export function initApp() {
       suggestions: snapshot.suggestions ?? [],
       updating: snapshot.updating ?? [],
       managers: snapshot.managers ?? [],
+      diskLive: snapshot.diskLive ?? false,
     })
     applyTheme(snapshot.config.theme, snapshot.config.themeGlass)
   })

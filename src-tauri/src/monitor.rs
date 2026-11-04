@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 static WATCH: AtomicBool = AtomicBool::new(false);
+static TRAY: AtomicBool = AtomicBool::new(false);
 
 use serde::Serialize;
 use sysinfo::{Pid, ProcessesToUpdate, System};
@@ -64,20 +65,64 @@ pub fn start() {
             temp_c: None,
             disk_bps: 0.0,
         };
+        let mut ticks = 0u32;
         loop {
-            if !WATCH.load(Ordering::Relaxed) {
-                std::thread::sleep(Duration::from_millis(400));
+            let hot = WATCH.load(Ordering::Relaxed) || TRAY.load(Ordering::Relaxed);
+            if crate::desk::paused() {
+                std::thread::sleep(Duration::from_secs(2));
                 continue;
             }
-            if let Some(sample) = sample_once(&mut keeper) {
+            if let Some(sample) = sample_once(&mut keeper, hot) {
+                crate::jobs::set_tooltip(&tip(&sample));
+                if ticks % 6 == 0 {
+                    remember(&sample);
+                }
+                ticks = ticks.wrapping_add(1);
                 *SAMPLE.lock().unwrap_or_else(|err| err.into_inner()) = Some(sample);
             }
-            std::thread::sleep(Duration::from_secs(2));
+            std::thread::sleep(if hot { Duration::from_secs(2) } else { Duration::from_secs(10) });
         }
     });
 }
 
-fn sample_once(keeper: &mut Keeper) -> Option<MonitorSample> {
+pub fn tray_hot(on: bool) {
+    TRAY.store(on, Ordering::Relaxed);
+}
+
+fn tip(sample: &MonitorSample) -> String {
+    let ram = sample.ram_used as f64 / 1024.0 / 1024.0 / 1024.0;
+    let temp = sample.temp_c.map(|value| format!(" · {value:.0}°")).unwrap_or_default();
+    format!("cpu {:.0}% · ram {ram:.1} gb{temp}", sample.cpu)
+}
+
+fn remember(sample: &MonitorSample) {
+    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    bob_core::record_sample(ts, "cpu", "", f64::from(sample.cpu));
+    if sample.ram_total > 0 {
+        bob_core::record_sample(ts, "ram", "", sample.ram_used as f64 / sample.ram_total as f64 * 100.0);
+    }
+    if let Some(temp) = sample.temp_c {
+        bob_core::record_sample(ts, "temp", "", f64::from(temp));
+    }
+    for (name, used) in drive_rows() {
+        bob_core::record_sample(ts, "disk", &name, used);
+    }
+}
+
+pub fn drive_rows() -> Vec<(String, f64)> {
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    disks
+        .list()
+        .iter()
+        .map(|disk| {
+            let name = disk.mount_point().to_string_lossy().to_string();
+            let used = disk.total_space().saturating_sub(disk.available_space()) as f64;
+            (name, used)
+        })
+        .collect()
+}
+
+fn sample_once(keeper: &mut Keeper, with_procs: bool) -> Option<MonitorSample> {
     keeper.sys.refresh_cpu_usage();
     keeper.sys.refresh_memory();
     if !keeper.primed {
@@ -85,7 +130,9 @@ fn sample_once(keeper: &mut Keeper) -> Option<MonitorSample> {
         keeper.sys.refresh_cpu_usage();
         keeper.primed = true;
     }
-    keeper.sys.refresh_processes(ProcessesToUpdate::All, true);
+    if with_procs {
+        keeper.sys.refresh_processes(ProcessesToUpdate::All, true);
+    }
     let cpu = keeper.sys.global_cpu_usage();
     let ram_total = keeper.sys.total_memory();
     let ram_used = keeper.sys.used_memory();
@@ -124,19 +171,22 @@ fn sample_once(keeper: &mut Keeper) -> Option<MonitorSample> {
         }
         keeper.extra_at = Instant::now();
     }
-    let mut processes: Vec<ProcInfo> = keeper
-        .sys
-        .processes()
-        .values()
-        .map(|proc_| ProcInfo {
-            pid: proc_.pid().as_u32(),
-            name: proc_.name().to_string_lossy().to_string(),
-            cpu: proc_.cpu_usage(),
-            ram: proc_.memory(),
-        })
-        .collect();
-    processes.sort_by(|a, b| b.cpu.partial_cmp(&a.cpu).unwrap_or(std::cmp::Ordering::Equal));
-    processes.truncate(12);
+    let mut processes = Vec::new();
+    if with_procs {
+        processes = keeper
+            .sys
+            .processes()
+            .values()
+            .map(|proc_| ProcInfo {
+                pid: proc_.pid().as_u32(),
+                name: proc_.name().to_string_lossy().to_string(),
+                cpu: proc_.cpu_usage(),
+                ram: proc_.memory(),
+            })
+            .collect();
+        processes.sort_by(|a, b| b.cpu.partial_cmp(&a.cpu).unwrap_or(std::cmp::Ordering::Equal));
+        processes.truncate(8);
+    }
     Some(MonitorSample {
         cpu,
         ram_used,

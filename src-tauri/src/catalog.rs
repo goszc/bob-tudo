@@ -29,13 +29,25 @@ static LOGIN: Mutex<Option<PendingLogin>> = Mutex::new(None);
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallReq {
-    source: String,
-    source_id: String,
-    version: String,
+    pub source: String,
+    pub source_id: String,
+    pub version: String,
     #[serde(default)]
     asset_url: String,
     #[serde(default)]
     asset_name: String,
+}
+
+impl InstallReq {
+    pub fn from_parts(source: &str, source_id: &str, version: &str) -> Self {
+        Self {
+            source: source.into(),
+            source_id: source_id.into(),
+            version: version.into(),
+            asset_url: String::new(),
+            asset_name: String::new(),
+        }
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -60,7 +72,7 @@ pub fn spawn(app: AppHandle) {
 }
 
 pub async fn refresh(app: &AppHandle) {
-    if app.state::<AppState>().lock().updating.iter().any(|area| area == "catalog") {
+    if crate::desk::paused() || app.state::<AppState>().lock().updating.iter().any(|area| area == "catalog") {
         return;
     }
     let job = jobs::begin(app, "catálogo", "catalog", true);
@@ -354,6 +366,15 @@ async fn load_remote(app: &AppHandle, hit: &CatalogHit) -> Result<CatalogDetail,
     with_index(app, |index| index.detail(&hit.id)?.ok_or_else(|| "app não encontrado".to_string()))
 }
 
+pub fn catalog_snapshot(app: &AppHandle) -> (Vec<bob_core::BundleApp>, Vec<String>, Vec<bob_core::Collection>) {
+    with_index(app, |index| {
+        let apps = index.installed_offers().unwrap_or_default();
+        let favorites = index.favorite_ids().unwrap_or_default();
+        let collections = index.collections().unwrap_or_default();
+        (apps, favorites, collections)
+    })
+}
+
 #[tauri::command]
 pub fn catalog_favorite(app: AppHandle, id: String, on: bool) -> Result<(), String> {
     with_index(&app, |index| index.set_favorite(&id, on))
@@ -563,6 +584,17 @@ pub fn github_status(app: AppHandle) -> Result<LoginState, String> {
     let connected = secrets::read_token(&data_dir).is_some();
     let login = if connected { with_index(&app, |index| index.meta_get("github_login").unwrap_or_default()) } else { String::new() };
     Ok(LoginState { connected, login })
+}
+
+#[tauri::command]
+pub fn github_set_token(app: AppHandle, token: String) -> Result<(), String> {
+    let data_dir = app.state::<AppState>().lock().data_dir.clone();
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        secrets::delete_token(&data_dir);
+        return Ok(());
+    }
+    secrets::store_token(&data_dir, &token)
 }
 
 #[tauri::command]

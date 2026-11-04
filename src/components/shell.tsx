@@ -1,9 +1,11 @@
-import type { ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { cn } from "../lib/cn"
 import { isPage, type Page } from "../lib/types"
 import { applyUpdate, closeConfirm, go, useApp } from "../store"
+import { paletteActions } from "../lib/desk-demo"
 import { Logo } from "./logo"
 import { ConfirmDialog } from "./ui/dialog"
+import { Input } from "./ui/input"
 
 const GROUPS: { label: string; items: { id: Page; label: string }[] }[] = [
   { label: "agora", items: [{ id: "home", label: "sugestões" }] },
@@ -11,6 +13,8 @@ const GROUPS: { label: string; items: { id: Page; label: string }[] }[] = [
     label: "disco",
     items: [
       { id: "disk", label: "mapa" },
+      { id: "search", label: "busca" },
+      { id: "history", label: "histórico" },
       { id: "clean", label: "limpeza" },
       { id: "dupes", label: "duplicados" },
       { id: "health", label: "discos" },
@@ -21,6 +25,10 @@ const GROUPS: { label: string; items: { id: Page; label: string }[] }[] = [
     items: [
       { id: "startup", label: "inicialização" },
       { id: "monitor", label: "monitor" },
+      { id: "network", label: "rede" },
+      { id: "power", label: "energia" },
+      { id: "game", label: "jogo" },
+      { id: "drivers", label: "drivers" },
       { id: "privacy", label: "privacidade" },
       { id: "restore", label: "restauração" },
     ],
@@ -29,11 +37,12 @@ const GROUPS: { label: string; items: { id: Page; label: string }[] }[] = [
     label: "apps",
     items: [
       { id: "catalog", label: "catálogo" },
+      { id: "backup", label: "backup" },
       { id: "upgrades", label: "atualizar" },
       { id: "uninstall", label: "desinstalar" },
     ],
   },
-  { label: "app", items: [{ id: "settings", label: "ajustes" }] },
+  { label: "app", items: [{ id: "report", label: "relatório" }, { id: "settings", label: "ajustes" }] },
 ]
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -118,6 +127,57 @@ export function Shell({ children }: { children: ReactNode }) {
           run?.()
         }}
       />
+      <CommandPalette />
+    </div>
+  )
+}
+
+function CommandPalette() {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState("")
+  const actions = useMemo(() => {
+    const needle = text.trim().toLowerCase()
+    return paletteActions.filter((action) => !needle || action.label.includes(needle) || action.hint.includes(needle))
+  }, [text])
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get("palette") === "1") setOpen(true)
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault()
+        setOpen((current) => !current)
+      } else if (event.key === "Escape") {
+        setOpen(false)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-40 flex items-start justify-center bg-ink/20 px-4 pt-[12vh]" onClick={() => setOpen(false)}>
+      <div className="w-full max-w-[520px] overflow-hidden rounded-2xl border border-line bg-surface shadow-xl" onClick={(event) => event.stopPropagation()}>
+        <div className="border-b border-line p-3">
+          <Input autoFocus value={text} onChange={(event) => setText(event.target.value)} placeholder="buscar tela, ação ou app" />
+        </div>
+        <div className="max-h-[360px] overflow-auto p-2">
+          {actions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              className="flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-left hover:bg-soft"
+              onClick={() => {
+                if (isPage(action.page)) go(action.page)
+                setOpen(false)
+              }}
+            >
+              <span className="text-[14px]">{action.label}</span>
+              <span className="text-[12px] text-muted">{action.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

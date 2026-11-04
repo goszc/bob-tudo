@@ -13,6 +13,12 @@ pub fn store_tray(icon: tauri::tray::TrayIcon) {
     *TRAY.lock().unwrap_or_else(|err| err.into_inner()) = Some(icon);
 }
 
+pub fn set_tooltip(text: &str) {
+    if let Some(icon) = TRAY.lock().unwrap_or_else(|err| err.into_inner()).as_ref() {
+        let _ = icon.set_tooltip(Some(text));
+    }
+}
+
 pub fn begin(app: &tauri::AppHandle, title: &str, page: &str, quiet: bool) -> String {
     let id = bob_core::nid("j");
     let job = JobView {
@@ -112,6 +118,11 @@ fn refresh_tray(app: &tauri::AppHandle, jobs: &[JobView]) {
     if let Ok(menu) = Menu::with_items(app, &entries) {
         let _ = icon.set_menu(Some(menu));
     }
+}
+
+#[tauri::command]
+pub fn jobs_list(app: tauri::AppHandle) -> Vec<JobView> {
+    app.state::<AppState>().lock().jobs.clone()
 }
 
 pub fn mark_updating(app: &tauri::AppHandle, area: &str, on: bool) {

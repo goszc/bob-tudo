@@ -618,6 +618,36 @@ impl CatalogIndex {
         Ok(out)
     }
 
+    pub fn favorite_ids(&self) -> Result<Vec<String>, String> {
+        let mut stmt = self.conn.prepare("SELECT app_id FROM favorites ORDER BY app_id").map_err(|err| err.to_string())?;
+        let rows = stmt.query_map([], |row| row.get(0)).map_err(|err| err.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|err| err.to_string())
+    }
+
+    pub fn installed_offers(&self) -> Result<Vec<crate::desk::BundleApp>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT name, offers_json FROM apps WHERE installed = 1 ORDER BY name")
+            .map_err(|err| err.to_string())?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|err| err.to_string())?;
+        let mut apps = Vec::new();
+        for row in rows {
+            let (name, offers_json) = row.map_err(|err| err.to_string())?;
+            let offers: Vec<crate::catalog_model::Offer> = serde_json::from_str(&offers_json).unwrap_or_default();
+            if let Some(offer) = offers.into_iter().find(|offer| matches!(offer.source.as_str(), "winget" | "scoop" | "chocolatey")) {
+                apps.push(crate::desk::BundleApp {
+                    source: offer.source,
+                    id: offer.source_id,
+                    name,
+                    version: offer.version,
+                });
+            }
+        }
+        Ok(apps)
+    }
+
     pub fn set_favorite(&self, id: &str, on: bool) -> Result<(), String> {
         if on {
             self.conn.execute("INSERT OR IGNORE INTO favorites (app_id) VALUES (?1)", [id])

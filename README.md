@@ -10,11 +10,15 @@ baixe `bob-tudo-setup.exe` na [página de releases](https://github.com/goszc/bob
 
 o windows pode mostrar o smartscreen na primeira vez. o instalador não tem assinatura de código. em “mais informações”, escolha executar mesmo assim. o webview2 já vem no windows 11; no windows 10, instale o runtime da microsoft se a janela não abrir.
 
-o catálogo junta winget, github, scoop e chocolatey. em ajustes dá para instalar o gerenciador que faltar: winget pelo app installer, scoop na sua conta, chocolatey com permissão de administrador.
+o catálogo junta winget, github, scoop e chocolatey. em ajustes dá para instalar o gerenciador que faltar: winget pelo app installer, scoop na sua conta, chocolatey com permissão de administrador. a busca de arquivos, o mapa ao vivo, o histórico, o backup de apps, drivers, rede, modo jogo, energia e o relatório do pc entram na 0.4.0.
 
 ## o que faz
 
-- mapa do disco de qualquer pasta, com blocos por tipo, busca e exclusão para a lixeira.
+- mapa do disco de qualquer pasta, com blocos por tipo e exclusão para a lixeira. quando o diário do ntfs está disponível, o mapa e a busca de nomes acompanham o que mudou sem varrer tudo de novo.
+- busca de arquivos pelo nome, com filtros, abrir, mostrar no explorer e copiar o caminho.
+- histórico local de cpu, memória, temperatura e espaço, só enquanto o app está aberto, com o que cresceu no disco.
+- backup dos apps instalados, favoritos e coleções, para reinstalar em outro pc.
+- drivers, rede, modo jogo, planos de energia e um relatório de uma página. tudo sugere ou espera o seu clique.
 - limpeza de temporários, caches de navegador, lixeira, download do windows update, dism `StartComponentCleanup` (sem `/ResetBase`), logs, miniaturas e despejos. o tamanho aparece antes. temporários e caches são apagados de vez; o mapa e os duplicados vão para a lixeira.
 - duplicados pelo conteúdo (tamanho, depois os primeiros 64 kb, depois blake3) e fotos parecidas na mesma pasta.
 - saúde do ssd e do hd pelo smart do windows, com smartctl se estiver no caminho, em `C:\Program Files\smartmontools\bin` ou em `%LOCALAPPDATA%\bob tudo`.
@@ -82,4 +86,4 @@ as outras telas estão em `docs/screenshots`.
 
 ## limites
 
-isto foi desenvolvido e testado fora de um windows de verdade. o mapa não lê a mft: uma leitura direta do volume pediria administrador e acesso bruto, então a varredura é pelos arquivos. caches não vão para a lixeira de propósito. o copilot só some o botão. no windows home, telemetria `0` pode ser tratada como `1`. serviços dentro do system32 não são mexidos. processos filhos nascem sem janela de console.
+isto foi desenvolvido e testado fora de um windows de verdade. a leitura da mft e o diário usn só acontecem quando o volume pode ser aberto; sem isso, a busca usa o índice do mapa. arquivos pequenos podem continuar agrupados no mapa. trocar dns, chocolatey e o plano de energia pedem permissão do windows. caches não vão para a lixeira de propósito. o copilot só some o botão. no windows home, telemetria `0` pode ser tratada como `1`. serviços dentro do system32 não são mexidos. processos filhos nascem sem janela de console.

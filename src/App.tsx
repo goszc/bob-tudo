@@ -16,21 +16,37 @@ const CatalogPage = lazy(() => import("./pages/catalog").then((mod) => ({ defaul
 const UpgradesPage = lazy(() => import("./pages/upgrades").then((mod) => ({ default: mod.UpgradesPage })))
 const UninstallPage = lazy(() => import("./pages/uninstall").then((mod) => ({ default: mod.UninstallPage })))
 const SettingsPage = lazy(() => import("./pages/settings").then((mod) => ({ default: mod.SettingsPage })))
+const SearchPage = lazy(() => import("./pages/search").then((mod) => ({ default: mod.SearchPage })))
+const HistoryPage = lazy(() => import("./pages/history").then((mod) => ({ default: mod.HistoryPage })))
+const BackupPage = lazy(() => import("./pages/backup").then((mod) => ({ default: mod.BackupPage })))
+const DriversPage = lazy(() => import("./pages/system-plus").then((mod) => ({ default: mod.DriversPage })))
+const NetworkPage = lazy(() => import("./pages/system-plus").then((mod) => ({ default: mod.NetworkPage })))
+const GamePage = lazy(() => import("./pages/system-plus").then((mod) => ({ default: mod.GamePage })))
+const PowerPage = lazy(() => import("./pages/system-plus").then((mod) => ({ default: mod.PowerPage })))
+const ReportPage = lazy(() => import("./pages/report").then((mod) => ({ default: mod.ReportPage })))
 
 const PAGES: { id: Page; node: (active: boolean) => ReactNode }[] = [
   { id: "home", node: () => <HomePage /> },
   { id: "disk", node: () => <DiskPage /> },
+  { id: "search", node: () => <SearchPage /> },
+  { id: "history", node: () => <HistoryPage /> },
   { id: "clean", node: () => <CleanPage /> },
   { id: "dupes", node: () => <DupesPage /> },
   { id: "health", node: () => <HealthPage /> },
   { id: "startup", node: () => <StartupPage /> },
   { id: "monitor", node: (active) => <MonitorPage active={active} /> },
+  { id: "drivers", node: () => <DriversPage /> },
+  { id: "network", node: () => <NetworkPage /> },
+  { id: "game", node: () => <GamePage /> },
+  { id: "power", node: () => <PowerPage /> },
   { id: "privacy", node: () => <PrivacyPage /> },
   { id: "restore", node: () => <RestorePage /> },
   { id: "catalog", node: () => <CatalogPage /> },
+  { id: "backup", node: () => <BackupPage /> },
   { id: "upgrades", node: () => <UpgradesPage /> },
   { id: "uninstall", node: () => <UninstallPage /> },
   { id: "settings", node: () => <SettingsPage /> },
+  { id: "report", node: () => <ReportPage /> },
 ]
 
 export default function App() {
