@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <title>bob tudo</title>
+  <mask id="bob-tudo-eyes">
+    <rect width="32" height="32" fill="white"/>
+    <ellipse cx="14.3" cy="12.8" rx="2.05" ry="2.55" fill="black"/>
+    <ellipse cx="21.7" cy="12.8" rx="2.05" ry="2.55" fill="black"/>
+  </mask>
+  <circle cx="18.2" cy="13.6" r="10" fill="currentColor" mask="url(#bob-tudo-eyes)"/>
+  <rect x="1" y="18" width="20.5" height="12.5" rx="4.2" fill="currentColor"/>
+</svg>

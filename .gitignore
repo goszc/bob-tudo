@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+
+/target
+/src-tauri/target
+/src-tauri/gen/schemas
+
+*.exe
+*.sig
+packaging/bob-tudo-setup.exe
+packaging/latest.json
+packaging/updater.key
+packaging/updater.key.pub

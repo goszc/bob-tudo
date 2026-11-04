@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: "Outfit Variable", ui-sans-serif, system-ui, sans-serif;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-soft: var(--soft);
+  --color-fill: var(--fill);
+  --color-onfill: var(--onfill);
+  --color-danger: var(--danger);
+}
+
+:root {
+  color-scheme: light;
+  --bg: #f3f3f1;
+  --surface: #ffffff;
+  --ink: #161616;
+  --muted: #6e6e6b;
+  --line: #e4e4e1;
+  --soft: #ececea;
+  --fill: #161616;
+  --onfill: #f7f7f5;
+  --danger: #9d3d36;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: #101010;
+  --surface: #181818;
+  --ink: #f3f3f1;
+  --muted: #9c9c98;
+  --line: #2c2c2c;
+  --soft: #222222;
+  --fill: #f3f3f1;
+  --onfill: #141414;
+  --danger: #f0b2ac;
+}
+
+html.glass {
+  --bg: transparent;
+  --surface: rgba(255, 255, 255, 0.62);
+  --ink: #171716;
+  --muted: #5c5c58;
+  --line: rgba(255, 255, 255, 0.72);
+  --soft: rgba(255, 255, 255, 0.38);
+  --fill: #171716;
+  --onfill: #f7f6f3;
+  --danger: #9d3d36;
+}
+
+html.glass.dark {
+  --bg: transparent;
+  --surface: rgba(22, 22, 24, 0.62);
+  --ink: #f6f5f2;
+  --muted: #c2c2bc;
+  --line: rgba(255, 255, 255, 0.16);
+  --soft: rgba(255, 255, 255, 0.08);
+  --fill: #f3f3f1;
+  --onfill: #141414;
+  --danger: #f0b2ac;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+html.glass body {
+  background:
+    radial-gradient(980px 560px at -8% -10%, rgba(255, 255, 255, 0.75), transparent 58%),
+    radial-gradient(760px 520px at 110% 0%, rgba(176, 176, 170, 0.45), transparent 52%),
+    radial-gradient(820px 480px at 80% 120%, rgba(120, 118, 112, 0.22), transparent 46%),
+    linear-gradient(165deg, #f3f0ea 0%, #e5e1da 48%, #efebe4 100%);
+}
+
+html.glass.dark body {
+  background:
+    radial-gradient(900px 520px at -10% -12%, rgba(255, 255, 255, 0.14), transparent 56%),
+    radial-gradient(720px 480px at 108% 8%, rgba(150, 150, 160, 0.18), transparent 50%),
+    radial-gradient(800px 500px at 70% 120%, rgba(80, 80, 90, 0.35), transparent 48%),
+    linear-gradient(165deg, #1b1b1f 0%, #101012 52%, #16161a 100%);
+}
+
+html.glass aside,
+html.glass .bg-surface,
+html.glass .bg-soft {
+  background-clip: padding-box;
+  backdrop-filter: blur(22px) saturate(1.35);
+  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+}
+
+html.glass .bg-surface {
+  box-shadow: 0 10px 40px rgba(40, 36, 30, 0.06);
+}
+
+html.glass.dark .bg-surface {
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
+}
+
+html.glass aside {
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.65);
+}
+
+html.glass.dark aside {
+  background: rgba(16, 16, 18, 0.46);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.08);
+}
+
+::placeholder {
+  color: var(--muted);
+}
+
+@layer base {
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-rise {
+  animation: rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+
+.bar-indeterminate {
+  width: 35%;
+  animation: indeterminate 1.15s ease-in-out infinite;
+}

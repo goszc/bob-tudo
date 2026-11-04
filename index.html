@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>bob tudo</title>
+    <script>
+      try {
+        const params = new URLSearchParams(location.search)
+        const theme = params.get("theme") || localStorage.getItem("bob-tudo-theme")
+        const glassFamily =
+          localStorage.getItem("bob-tudo-glass") === "1" ||
+          theme === "glass-light" ||
+          theme === "glass-dark"
+        const systemDark = matchMedia("(prefers-color-scheme: dark)").matches
+        const dark =
+          theme === "dark" ||
+          theme === "glass-dark" ||
+          ((theme === null || theme === "system") && systemDark)
+        const glass =
+          theme === "glass-light" ||
+          theme === "glass-dark" ||
+          ((theme === null || theme === "system") && glassFamily)
+        if (dark) document.documentElement.classList.add("dark")
+        if (glass) document.documentElement.classList.add("glass")
+        document.documentElement.style.colorScheme = dark ? "dark" : "light"
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

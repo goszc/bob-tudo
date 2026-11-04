@@ -1,0 +1,65 @@
+name: bob tudo installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: install nsis
+        run: choco install nsis -y
+      - name: npm
+        run: npm ci
+      - name: build the windows exe
+        run: npm run tauri build -- --no-bundle
+      - name: installer
+        working-directory: packaging
+        shell: pwsh
+        run: |
+          $env:Path = "${env:ProgramFiles(x86)}\NSIS;" + $env:Path
+          makensis /DEXE=..\src-tauri\target\release\bob-tudo.exe /DICON=..\src-tauri\icons\icon.ico bob-tudo.nsi
+      - name: sign and write the update manifest
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "segredo TAURI_SIGNING_PRIVATE_KEY ausente. o instalador sai sem manifesto assinado."
+            exit 0
+          fi
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
+            unset TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          fi
+          npx tauri signer sign packaging/bob-tudo-setup.exe
+          node scripts/write-latest-json.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bob-tudo-setup
+          path: packaging/bob-tudo-setup.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bob-tudo-latest-json
+          path: packaging/latest.json
+          if-no-files-found: ignore
+      - name: publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            packaging/bob-tudo-setup.exe
+            packaging/latest.json
+          fail_on_unmatched_files: false

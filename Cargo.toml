@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["crates/bob-core", "src-tauri"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 8
+strip = true
+panic = "abort"
