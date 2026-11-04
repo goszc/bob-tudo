@@ -1,11 +1,14 @@
 mod apps;
+mod catalog;
 mod clean;
 mod disk;
 mod elevate;
 mod hidden;
 mod jobs;
+mod managers;
 mod monitor;
 mod preload;
+mod secrets;
 mod state;
 mod system;
 mod updates;
@@ -30,6 +33,7 @@ struct Snapshot {
     upgrades: Vec<bob_core::WingetRow>,
     suggestions: Vec<bob_core::Suggestion>,
     updating: Vec<String>,
+    managers: Vec<bob_core::ManagerInfo>,
 }
 
 #[tauri::command]
@@ -48,6 +52,7 @@ fn state(app: tauri::AppHandle) -> Snapshot {
         upgrades: shared.upgrades.clone(),
         suggestions: shared.suggestions.clone(),
         updating: shared.updating.clone(),
+        managers: shared.managers.clone(),
     }
 }
 
@@ -233,7 +238,23 @@ pub fn run() {
             apps::apps_leftovers,
             apps::apps_remove_leftovers,
             updates::check_now,
-            updates::apply_update
+            updates::apply_update,
+            managers::managers_list,
+            managers::managers_refresh,
+            managers::manager_install,
+            managers::manager_update,
+            catalog::catalog_search,
+            catalog::catalog_detail,
+            catalog::catalog_favorite,
+            catalog::catalog_watch,
+            catalog::catalog_collections,
+            catalog::catalog_create_collection,
+            catalog::catalog_collection_app,
+            catalog::catalog_install,
+            catalog::github_login_begin,
+            catalog::github_login_poll,
+            catalog::github_status,
+            catalog::github_logout
         ])
         .run(tauri::generate_context!())
         .expect("bob tudo");

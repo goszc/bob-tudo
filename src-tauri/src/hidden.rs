@@ -17,6 +17,13 @@ pub fn tokio_command(program: impl AsRef<OsStr>) -> tokio::process::Command {
     cmd
 }
 
+/// Instalador gráfico. Sem CREATE_NO_WINDOW, senão a janela do setup some.
+pub fn gui_command(program: impl AsRef<OsStr>) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    cmd.stdin(Stdio::null());
+    cmd
+}
+
 pub fn std_command(program: impl AsRef<OsStr>) -> std::process::Command {
     let mut cmd = std::process::Command::new(program);
     cmd.stdin(Stdio::null());

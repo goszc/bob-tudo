@@ -35,6 +35,10 @@ pub struct Config {
     pub notify_smart: bool,
     #[serde(default = "yes")]
     pub notify_task_done: bool,
+    #[serde(default)]
+    pub github_client_id: String,
+    #[serde(default = "yes")]
+    pub notify_catalog_watch: bool,
 }
 
 fn yes() -> bool {
@@ -56,6 +60,8 @@ impl Default for Config {
             notify_junk: true,
             notify_smart: true,
             notify_task_done: true,
+            github_client_id: String::new(),
+            notify_catalog_watch: true,
         }
     }
 }
@@ -112,6 +118,7 @@ pub enum BobEvent {
     Upgrades { rows: Vec<WingetRow> },
     Suggestions { items: Vec<Suggestion> },
     Updating { area: String, on: bool },
+    Managers { managers: Vec<bob_core::ManagerInfo> },
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -152,6 +159,7 @@ pub struct Shared {
     pub search_cache: std::collections::HashMap<String, Vec<WingetRow>>,
     pub hash_store: HashStore,
     pub notified: Vec<String>,
+    pub managers: Vec<bob_core::ManagerInfo>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -171,6 +179,7 @@ pub struct DisabledStartup {
 
 pub struct AppState {
     pub shared: Mutex<Shared>,
+    pub catalog: Mutex<bob_core::CatalogIndex>,
     pub scanning: AtomicBool,
     pub duping: AtomicBool,
 }
@@ -193,6 +202,11 @@ impl AppState {
         let suggestions = read_json(&data_dir.join("suggestions.json")).unwrap_or_default();
         let hash_store = read_json(&data_dir.join("hash-cache.json")).unwrap_or_default();
         let search_cache = read_json(&data_dir.join("winget-search.json")).unwrap_or_default();
+        let managers = read_json(&data_dir.join("managers.json")).unwrap_or_else(empty_managers);
+        let catalog = bob_core::CatalogIndex::open(&data_dir.join("catalog.db")).unwrap_or_else(|_| {
+            bob_core::CatalogIndex::memory().unwrap_or_else(|_| panic!("catálogo"))
+        });
+        let _ = catalog.ensure_curated();
         Self {
             shared: Mutex::new(Shared {
                 config,
@@ -219,7 +233,9 @@ impl AppState {
                 search_cache,
                 hash_store,
                 notified: Vec::new(),
+                managers,
             }),
+            catalog: Mutex::new(catalog),
             scanning: AtomicBool::new(false),
             duping: AtomicBool::new(false),
         }
@@ -228,6 +244,13 @@ impl AppState {
     pub fn lock(&self) -> MutexGuard<'_, Shared> {
         self.shared.lock().unwrap_or_else(|err| err.into_inner())
     }
+}
+
+fn empty_managers() -> Vec<bob_core::ManagerInfo> {
+    ["winget", "scoop", "chocolatey"]
+        .into_iter()
+        .map(|id| bob_core::manager_from_probe(id, "", ""))
+        .collect()
 }
 
 pub fn save_config(shared: &Shared) {

@@ -12,8 +12,7 @@ const StartupPage = lazy(() => import("./pages/startup").then((mod) => ({ defaul
 const MonitorPage = lazy(() => import("./pages/monitor").then((mod) => ({ default: mod.MonitorPage })))
 const PrivacyPage = lazy(() => import("./pages/privacy").then((mod) => ({ default: mod.PrivacyPage })))
 const RestorePage = lazy(() => import("./pages/restore").then((mod) => ({ default: mod.RestorePage })))
-const InstallPage = lazy(() => import("./pages/install").then((mod) => ({ default: mod.InstallPage })))
-const OssPage = lazy(() => import("./pages/oss").then((mod) => ({ default: mod.OssPage })))
+const CatalogPage = lazy(() => import("./pages/catalog").then((mod) => ({ default: mod.CatalogPage })))
 const UpgradesPage = lazy(() => import("./pages/upgrades").then((mod) => ({ default: mod.UpgradesPage })))
 const UninstallPage = lazy(() => import("./pages/uninstall").then((mod) => ({ default: mod.UninstallPage })))
 const SettingsPage = lazy(() => import("./pages/settings").then((mod) => ({ default: mod.SettingsPage })))
@@ -28,8 +27,7 @@ const PAGES: { id: Page; node: (active: boolean) => ReactNode }[] = [
   { id: "monitor", node: (active) => <MonitorPage active={active} /> },
   { id: "privacy", node: () => <PrivacyPage /> },
   { id: "restore", node: () => <RestorePage /> },
-  { id: "install", node: () => <InstallPage /> },
-  { id: "oss", node: () => <OssPage /> },
+  { id: "catalog", node: () => <CatalogPage /> },
   { id: "upgrades", node: () => <UpgradesPage /> },
   { id: "uninstall", node: () => <UninstallPage /> },
   { id: "settings", node: () => <SettingsPage /> },

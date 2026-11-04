@@ -2,6 +2,8 @@
 //! parsers e catálogos. O que fala com o windows fica no binário tauri.
 
 mod catalog;
+mod catalog_db;
+mod catalog_model;
 mod clean;
 mod dupes;
 mod fastwalk;
@@ -19,6 +21,13 @@ mod version;
 mod winget;
 
 pub use catalog::{oss_catalog, OssApp};
+pub use catalog_db::{extract_matching, find_index_db, read_winget_index, scoop_from_zip, CatalogIndex, Collection, SearchPage, SearchQuery};
+pub use catalog_model::{
+    chocolatey_install_script, curated_incoming, fts_query, github_repo, manager_from_probe, manager_name, merge, norm_name,
+    paid_label, parse_choco_atom, parse_device_poll, parse_device_start, parse_github_releases, parse_github_repo, parse_scoop,
+    render_readme, rfc3339_ms, scoop_install_script, version_from_output, watch_is_newer, winget_installer_assets, Asset,
+    CatalogDetail, CatalogHit, DevicePoll, DeviceStart, Incoming, ManagerInfo, Offer, Release, RemoteAsset, APP_INSTALLER_STORE,
+};
 pub use clean::{measure_paths, purge_paths, PurgeReport};
 pub use dupes::{find_duplicates, find_duplicates_with, DupeFile, DupeGroup, DupeProgress, HashStore};
 pub use guard::protected_path;

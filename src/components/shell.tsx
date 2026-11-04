@@ -28,8 +28,7 @@ const GROUPS: { label: string; items: { id: Page; label: string }[] }[] = [
   {
     label: "apps",
     items: [
-      { id: "install", label: "instalar" },
-      { id: "oss", label: "código aberto" },
+      { id: "catalog", label: "catálogo" },
       { id: "upgrades", label: "atualizar" },
       { id: "uninstall", label: "desinstalar" },
     ],

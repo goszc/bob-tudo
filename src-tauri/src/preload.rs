@@ -9,6 +9,11 @@ use crate::jobs;
 use crate::state::{write_json, AppState, BobEvent};
 
 pub fn spawn(app: AppHandle) {
+    let managers = app.clone();
+    tauri::async_runtime::spawn(async move {
+        crate::managers::refresh(&managers).await;
+    });
+    crate::catalog::spawn(app.clone());
     tauri::async_runtime::spawn(async move {
         let permits = Arc::new(Semaphore::new(2));
         let mut tasks = Vec::new();

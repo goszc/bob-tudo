@@ -8,6 +8,7 @@ export type Page =
   | "monitor"
   | "privacy"
   | "restore"
+  | "catalog"
   | "install"
   | "oss"
   | "upgrades"
@@ -172,6 +173,8 @@ export type Config = {
   notifyJunk: boolean
   notifySmart: boolean
   notifyTaskDone: boolean
+  githubClientId: string
+  notifyCatalogWatch: boolean
 }
 
 export type Job = {
@@ -189,6 +192,72 @@ export type Suggestion = {
   detail: string
   page: string
   tone: string
+}
+
+export type ManagerInfo = {
+  id: string
+  name: string
+  installed: boolean
+  version: string
+  path: string
+}
+
+export type CatalogOffer = {
+  source: string
+  sourceId: string
+  version: string
+  size: number
+  portable: boolean
+  installer: boolean
+}
+
+export type CatalogHit = {
+  id: string
+  name: string
+  description: string
+  category: string
+  license: string
+  homepage: string
+  repo: string
+  wingetId: string
+  stars: number
+  updatedMs: number
+  latestVersion: string
+  size: number
+  icon: string
+  openSource: boolean
+  portable: boolean
+  installer: boolean
+  alternativeTo: string
+  sources: string[]
+  offers: CatalogOffer[]
+  installed: boolean
+  favorite: boolean
+  watched: boolean
+}
+
+export type CatalogAsset = { name: string; size: number; url: string; kind: string }
+
+export type CatalogRelease = {
+  version: string
+  notes: string
+  url: string
+  publishedMs: number
+  assets: CatalogAsset[]
+}
+
+export type CatalogDetail = CatalogHit & {
+  readmeHtml: string
+  images: string[]
+  releases: CatalogRelease[]
+  alternatives: CatalogHit[]
+}
+
+export type CatalogCollection = {
+  id: string
+  name: string
+  preset: boolean
+  apps: string[]
 }
 
 export type DiskSnap = {
@@ -210,6 +279,7 @@ export const PAGES: Page[] = [
   "monitor",
   "privacy",
   "restore",
+  "catalog",
   "install",
   "oss",
   "upgrades",

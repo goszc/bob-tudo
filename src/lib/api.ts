@@ -24,6 +24,7 @@ export type BobEvent =
   | { type: "upgrades"; rows: import("./types").WingetRow[] }
   | { type: "suggestions"; items: import("./types").Suggestion[] }
   | { type: "updating"; area: string; on: boolean }
+  | { type: "managers"; managers: import("./types").ManagerInfo[] }
 
 export async function onBob(handler: (event: BobEvent) => void): Promise<() => void> {
   if (!isTauri()) return () => {}

@@ -837,6 +837,7 @@ pub fn notify_kind(app: &AppHandle, kind: &str, body: &str) {
             "junk" => config.notify_junk,
             "smart" => config.notify_smart,
             "task" => config.notify_task_done,
+            "watch" => config.notify_catalog_watch,
             _ => true,
         }
     };

@@ -565,7 +565,7 @@ async fn winget_text(args: &[&str]) -> Result<String, String> {
     Ok(stdout)
 }
 
-async fn stream(app: &AppHandle, program: &str, args: &[String]) -> Result<(), String> {
+pub(crate) async fn stream(app: &AppHandle, program: &str, args: &[String]) -> Result<(), String> {
     let mut child = hidden::tokio_command(program)
         .args(args)
         .spawn()

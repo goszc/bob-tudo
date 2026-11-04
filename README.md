@@ -10,7 +10,7 @@ baixe `bob-tudo-setup.exe` na [página de releases](https://github.com/goszc/bob
 
 o windows pode mostrar o smartscreen na primeira vez. o instalador não tem assinatura de código. em “mais informações”, escolha executar mesmo assim. o webview2 já vem no windows 11; no windows 10, instale o runtime da microsoft se a janela não abrir.
 
-o winget precisa estar presente para instalar, atualizar e desinstalar por ele. o windows 11 já traz.
+o catálogo junta winget, github, scoop e chocolatey. em ajustes dá para instalar o gerenciador que faltar: winget pelo app installer, scoop na sua conta, chocolatey com permissão de administrador.
 
 ## o que faz
 
@@ -22,7 +22,7 @@ o winget precisa estar presente para instalar, atualizar e desinstalar por ele. 
 - monitor ao vivo de cpu, memória, disco, placa, rede, temperatura e processos.
 - privacidade com interruptores reversíveis. ligado significa proteção ligada.
 - ponto de restauração e diário do que o programa mudou, com desfazer.
-- busca e instalação pelo winget, catálogo de código aberto, atualizações e desinstalação com procura de sobras.
+- catálogo único (winget, github, scoop e chocolatey), com readme, versões, favoritos, coleções e instalação em lote. atualizações e desinstalação continuam.
 
 ## administrador
 

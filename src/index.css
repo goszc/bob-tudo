@@ -172,3 +172,23 @@ html.glass.dark aside {
   width: 35%;
   animation: indeterminate 1.15s ease-in-out infinite;
 }
+
+.prose-catalog h2 {
+  margin: 0 0 0.5rem;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.prose-catalog p,
+.prose-catalog ul {
+  margin: 0.5rem 0;
+}
+
+.prose-catalog ul {
+  padding-left: 1.1rem;
+}
+
+.prose-catalog img {
+  max-width: 100%;
+  border-radius: 12px;
+}

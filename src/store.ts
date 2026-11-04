@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from "react"
 import { applyWindowTheme, invoke, isTauri, onBob } from "./lib/api"
+import { demoManagers } from "./lib/catalog-demo"
 import { demoBiggest, demoChildren, demoClean, demoHealth, demoRoot, demoStartup, demoUpgrades } from "./lib/demo"
-import { isPage, isTheme, type CleanCategory, type Config, type DiskHealth, type DiskSnap, type Job, type Page, type StartupItem, type Suggestion, type ThemeMode, type WingetRow } from "./lib/types"
+import { isPage, isTheme, type CleanCategory, type Config, type DiskHealth, type DiskSnap, type Job, type ManagerInfo, type Page, type StartupItem, type Suggestion, type ThemeMode, type WingetRow } from "./lib/types"
 
 type Confirm = {
   title: string
@@ -26,6 +27,7 @@ type State = {
   startup: StartupItem[]
   upgrades: WingetRow[]
   updating: string[]
+  managers: ManagerInfo[]
 }
 
 const params = new URLSearchParams(location.search)
@@ -40,7 +42,7 @@ const browserDisk: DiskSnap | null = browser
   : null
 
 let state: State = {
-  page: isPage(queryPage) ? queryPage : "home",
+  page: asPage(queryPage),
   config: {
     theme: initialTheme,
     themeGlass: localStorage.getItem("bob-tudo-glass") === "1" || initialTheme === "glass-light" || initialTheme === "glass-dark",
@@ -54,11 +56,13 @@ let state: State = {
     notifyJunk: true,
     notifySmart: true,
     notifyTaskDone: true,
+    githubClientId: "",
+    notifyCatalogWatch: true,
   },
   toast: null,
   confirm: null,
   updateOffer: null,
-  version: "0.2.0",
+  version: "0.3.0",
   jobs: browser
     ? [{ id: "mapa", title: "mapa do disco", page: "disk", progress: 0.62, detail: "c:\\users", state: "running" }]
     : [],
@@ -76,11 +80,17 @@ let state: State = {
   startup: browser ? demoStartup : [],
   upgrades: browser ? demoUpgrades : [],
   updating: browser ? ["disk"] : [],
+  managers: browser ? demoManagers : [],
 }
 
 const listeners = new Set<() => void>()
 let toastTimer = 0
 let booted = false
+
+function asPage(value: string | null): Page {
+  if (value === "install" || value === "oss") return "catalog"
+  return isPage(value) ? value : "home"
+}
 
 function emit() {
   listeners.forEach((listener) => listener())
@@ -124,7 +134,7 @@ export function applyTheme(theme: ThemeMode, glassFamily = getState().config.the
 }
 
 export function go(page: Page) {
-  patch({ page })
+  patch({ page: page === "install" || page === "oss" ? "catalog" : page })
 }
 
 export function toast(message: string) {
@@ -172,6 +182,7 @@ export function initApp() {
     upgrades: WingetRow[]
     suggestions: Suggestion[]
     updating: string[]
+    managers: ManagerInfo[]
   }>("state").then((snapshot) => {
     patch({
       config: { ...state.config, ...snapshot.config },
@@ -185,6 +196,7 @@ export function initApp() {
       upgrades: snapshot.upgrades ?? [],
       suggestions: snapshot.suggestions ?? [],
       updating: snapshot.updating ?? [],
+      managers: snapshot.managers ?? [],
     })
     applyTheme(snapshot.config.theme, snapshot.config.themeGlass)
   })
@@ -199,6 +211,7 @@ export function initApp() {
     if (event.type === "startup") patch({ startup: event.items })
     if (event.type === "upgrades") patch({ upgrades: event.rows })
     if (event.type === "suggestions") patch({ suggestions: event.items })
+    if (event.type === "managers") patch({ managers: event.managers })
     if (event.type === "updating") {
       const updating = event.on ? Array.from(new Set([...state.updating, event.area])) : state.updating.filter((area) => area !== event.area)
       patch({ updating })
