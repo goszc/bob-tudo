@@ -29,7 +29,7 @@ jobs:
         shell: pwsh
         run: |
           $env:Path = "${env:ProgramFiles(x86)}\NSIS;" + $env:Path
-          makensis /DEXE=..\src-tauri\target\release\bob-tudo.exe /DICON=..\src-tauri\icons\icon.ico bob-tudo.nsi
+          makensis /DEXE=..\target\release\bob-tudo.exe /DICON=..\src-tauri\icons\icon.ico bob-tudo.nsi
       - name: sign and write the update manifest
         shell: bash
         env:
